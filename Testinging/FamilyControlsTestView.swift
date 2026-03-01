@@ -305,6 +305,7 @@ struct FamilyControlsTestView: View {
                 JumpingJackGateView(
                     title: title,
                     requiredReps: reps,
+                    recordVideo: true,
                     onComplete: { videoUrl in
                         guard let ch = lockService.activeChallenge else {
                             lockService.resolveChallengesTargetingMe()
@@ -328,6 +329,7 @@ struct FamilyControlsTestView: View {
                 PushupGateView(
                     title: title,
                     requiredReps: reps,
+                    recordVideo: true,
                     onComplete: { videoUrl in
                         guard let ch = lockService.activeChallenge else {
                             lockService.resolveChallengesTargetingMe()
@@ -1853,7 +1855,8 @@ private struct ReceiverChallengeFlowView: View {
                 JumpingJackGateView(
                     title: title,
                     requiredReps: myRequired,
-                    onComplete: {
+                    recordVideo: true,
+                    onComplete: { _ in
                         if action == .forfeit {
                             if !ch.fromUser.isEmpty {
                                 onForfeitAwardPoint(ch.fromUser)
@@ -1874,7 +1877,8 @@ private struct ReceiverChallengeFlowView: View {
                 PushupGateView(
                     title: title,
                     requiredReps: myRequired,
-                    onComplete: {
+                    recordVideo: true,
+                    onComplete: { _ in
                         if action == .forfeit {
                             if !ch.fromUser.isEmpty {
                                 onForfeitAwardPoint(ch.fromUser)
