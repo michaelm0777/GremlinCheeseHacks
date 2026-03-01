@@ -732,6 +732,7 @@ private struct FriendsView: View {
         let streakDays: Int
         let avatarGradient: [Color]
         let uid: String
+        let bigWins: Int
     }
 
     let friends: [Friend]
@@ -786,14 +787,26 @@ private struct FriendsView: View {
                                             .font(.system(size: 14, weight: .medium))
                                             .foregroundStyle(GremlinTheme.textSecondary)
 
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "bolt.fill")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(Color.orange.opacity(0.9))
+                                        HStack(spacing: 12) {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "bolt.fill")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(Color.orange.opacity(0.9))
 
-                                            Text("\(f.streakDays) day streak")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundStyle(Color.orange.opacity(0.9))
+                                                Text("\(f.streakDays) day streak")
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundStyle(Color.orange.opacity(0.9))
+                                            }
+
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "trophy.fill")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(Color.yellow.opacity(0.9))
+
+                                                Text("\(f.bigWins) big wins")
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundStyle(Color.yellow.opacity(0.9))
+                                            }
                                         }
                                         .padding(.top, 2)
                                     }
@@ -866,7 +879,8 @@ private struct FriendsView: View {
             subtitle: "beat you at pushups 💪",
             streakDays: 12,
             avatarGradient: [Color.pink, Color.red],
-            uid: "sarah_uid_placeholder"
+            uid: "sarah_uid_placeholder",
+            bigWins: 3,
         ),
         Friend(
             initials: "MC",
@@ -875,7 +889,8 @@ private struct FriendsView: View {
             subtitle: "50 jumping jacks",
             streakDays: 8,
             avatarGradient: [Color.blue, Color.indigo],
-            uid: "mike_uid_placeholder"
+            uid: "mike_uid_placeholder",
+            bigWins: 3,
         ),
         Friend(
             initials: "ED",
@@ -884,7 +899,8 @@ private struct FriendsView: View {
             subtitle: "absolutely destroyed you",
             streakDays: 15,
             avatarGradient: [Color.purple, Color.pink],
-            uid: "emma_uid_placeholder"
+            uid: "emma_uid_placeholder",
+            bigWins: 3,
         ),
         Friend(
             initials: "JW",
@@ -893,7 +909,8 @@ private struct FriendsView: View {
             subtitle: "12 jumping jacks",
             streakDays: 5,
             avatarGradient: [Color.orange, Color.red],
-            uid: "james_uid_placeholder"
+            uid: "james_uid_placeholder",
+            bigWins: 3,
         ),
         Friend(
             initials: "LA",
@@ -902,7 +919,8 @@ private struct FriendsView: View {
             subtitle: "on fire this week 🔥",
             streakDays: 20,
             avatarGradient: [Color.teal, Color.cyan],
-            uid: "lisa_uid_placeholder"
+            uid: "lisa_uid_placeholder",
+            bigWins: 3,
         )
     ]
 }
