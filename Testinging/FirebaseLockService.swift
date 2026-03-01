@@ -97,6 +97,33 @@ final class FirebaseLockService: ObservableObject {
                 }
         }
     }
+    
+    func createPair(withOtherUid otherUid: String, completion: @escaping (Result<String, Error>) -> Void) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            if otherUid == myUid {
+                completion(.failure(NSError(domain: "Pairing", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot pair with yourself."])))
+                return
+            }
+
+            let membersSorted = [myUid, otherUid].sorted()
+            let pairId = membersSorted.joined(separator: "_") // stable id
+
+            let data: [String: Any] = [
+                "members": membersSorted,
+                "createdAt": FieldValue.serverTimestamp()
+            ]
+
+            self.db.collection("pairs").document(pairId).setData(data, merge: true) { error in
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(pairId))
+                }
+            }
+        }
+    }
 
     /// Marks all pending challenges targeting the current user as completed so the listener sees no pending and unblock is effective.
     func resolveChallengesTargetingMe(completion: (() -> Void)? = nil) {
