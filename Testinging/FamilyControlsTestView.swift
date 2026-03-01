@@ -94,7 +94,10 @@ struct FamilyControlsTestView: View {
                         uidText: lockService.currentUserUid ?? "loading_uid",
                         onClose: { activeSheet = nil },
                         onShareQr: {
-                            showMyQr = true
+                            activeSheet = nil
+                            DispatchQueue.main.async {
+                                showMyQr = true
+                            }
                         },
                         onScanQr: {
                             activeSheet = nil
@@ -192,6 +195,7 @@ struct FamilyControlsTestView: View {
                             reps: reps,
                             blockDurationSec: 300
                         )
+                        showBlockPushupGate = false
                     },
                     onCancel: {}
                 )
@@ -206,6 +210,7 @@ struct FamilyControlsTestView: View {
                             reps: reps,
                             blockDurationSec: 300
                         )
+                        showBlockPushupGate = false
                     },
                     onCancel: {}
                 )
@@ -226,6 +231,7 @@ struct FamilyControlsTestView: View {
                     onComplete: {
                         lockService.resolveChallengesTargetingMe()
                         unblockAppsLocally()
+                        showUnblockPushupGate = false
                     },
                     onCancel: {}
                 )
@@ -236,6 +242,7 @@ struct FamilyControlsTestView: View {
                     onComplete: {
                         lockService.resolveChallengesTargetingMe()
                         unblockAppsLocally()
+                        showUnblockPushupGate = false
                     },
                     onCancel: {}
                 )
