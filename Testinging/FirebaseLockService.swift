@@ -76,7 +76,7 @@ final class FirebaseLockService: ObservableObject {
 
             let challengeData: [String: Any] = [
                 "fromUser": myUid,
-                "toUser": "tVFbOIUJfUeENqFT4sZzLbesq363",
+                "toUser": "Y4rd9Hm6w6hU7ndmpYyAUtxYycx2",
                 "status": "pending",
                 "createdAt": FieldValue.serverTimestamp(),
                 "blockDuration": blockDurationSec,

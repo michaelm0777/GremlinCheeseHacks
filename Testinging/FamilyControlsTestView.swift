@@ -105,7 +105,7 @@ struct FamilyControlsTestView: View {
             Button {
                 lockService.sendLockToOther() // keep old test flow
 
-                lockService.createChallengeToPairedUser(
+                lockService.createChallenge(
                     exerciseType: "jumping_jacks",
                     reps: 20,
                     blockDurationSec: 300
