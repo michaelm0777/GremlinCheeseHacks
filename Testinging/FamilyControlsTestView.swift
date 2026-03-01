@@ -101,9 +101,15 @@ struct FamilyControlsTestView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-
+            
             Button {
-                lockService.sendLockToOther()
+                lockService.sendLockToOther() // keep old test flow
+
+                lockService.createChallengeToPairedUser(
+                    exerciseType: "jumping_jacks",
+                    reps: 20,
+                    blockDurationSec: 300
+                )
             } label: {
                 Label(
                     role == .friendA ? "Lock Friend B" : "Lock Friend A",

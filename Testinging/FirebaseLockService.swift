@@ -65,6 +65,57 @@ final class FirebaseLockService: ObservableObject {
             }
         }
     }
+    
+    func createChallengeToPairedUser(
+        exerciseType: String,
+        reps: Int,
+        blockDurationSec: Int
+    ) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            self.db.collection("pairs")
+                .whereField("members", arrayContains: myUid)
+                .limit(to: 1)
+                .getDocuments { snapshot, error in
+                    if let error = error {
+                        print("Pairs query error:", error)
+                        return
+                    }
+                    guard
+                        let pairDoc = snapshot?.documents.first,
+                        let members = pairDoc.data()["members"] as? [String],
+                        let otherUid = members.first(where: { $0 != myUid })
+                    else {
+                        print("No valid pair/members found for:", myUid)
+                        return
+                    }
+
+                    let challengeData: [String: Any] = [
+                        "fromUser": myUid,
+                        "toUser": otherUid,
+                        "status": "pending",
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "blockDuration": blockDurationSec,
+                        "exercise": [
+                            "type": exerciseType,
+                            "reps": reps
+                        ],
+                        "proof": [
+                            "uploaded": false,
+                            "videoUrl": NSNull(),
+                            "uploadedAt": NSNull()
+                        ]
+                    ]
+
+                    self.db.collection("challenges").addDocument(data: challengeData) { error in
+                        if let error = error {
+                            print("Create challenge error:", error)
+                        }
+                    }
+                }
+        }
+    }
 
     // MARK: - User creation (Auth UID doc id)
 
