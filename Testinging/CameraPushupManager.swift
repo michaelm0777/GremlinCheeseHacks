@@ -25,6 +25,7 @@ final class CameraPushupManager: NSObject, ObservableObject {
 
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let sessionQueue = DispatchQueue(label: "pushup.capture.session", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "pushup.vision")
     /// Used only from processingQueue after init; safe for nonisolated access.
     private nonisolated(unsafe) var bodyPoseRequest: VNDetectHumanBodyPoseRequest!
@@ -43,35 +44,76 @@ final class CameraPushupManager: NSObject, ObservableObject {
         bodyPoseRequest = VNDetectHumanBodyPoseRequest()
     }
 
+    /// Start capture session. Requests camera permission on main first, then configures on a background queue so main never blocks.
     func startSession() {
-        captureSession.sessionPreset = .high
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
-              let input = try? AVCaptureDeviceInput(device: device) else {
-            errorMessage = "Could not access camera."
-            return
-        }
-        if captureSession.canAddInput(input) {
-            captureSession.addInput(input)
-        }
-        videoOutput.setSampleBufferDelegate(self, queue: processingQueue)
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        if captureSession.canAddOutput(videoOutput) {
-            captureSession.addOutput(videoOutput)
-        }
-        if let connection = videoOutput.connection(with: .video) {
-            connection.videoRotationAngle = 90
-            if connection.isVideoMirroringSupported {
-                connection.isVideoMirrored = true
+        Task { @MainActor in
+            let granted: Bool = await withCheckedContinuation { cont in
+                switch AVCaptureDevice.authorizationStatus(for: .video) {
+                case .authorized:
+                    cont.resume(returning: true)
+                case .notDetermined:
+                    AVCaptureDevice.requestAccess(for: .video) { cont.resume(returning: $0) }
+                default:
+                    cont.resume(returning: false)
+                }
             }
+            guard granted else {
+                errorMessage = "Camera access denied. Enable in Settings."
+                return
+            }
+            self.startSessionOnQueue()
         }
-        captureSession.startRunning()
-        isSessionRunning = true
-        errorMessage = nil
+    }
+
+    private nonisolated func startSessionOnQueue() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            var message: String?
+            defer {
+                Task { @MainActor in
+                    self.isSessionRunning = (message == nil)
+                    self.errorMessage = message
+                }
+            }
+            self.captureSession.beginConfiguration()
+            self.captureSession.sessionPreset = .medium
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
+                message = "No front camera."
+                self.captureSession.commitConfiguration()
+                return
+            }
+            guard let input = try? AVCaptureDeviceInput(device: device) else {
+                message = "Could not create camera input."
+                self.captureSession.commitConfiguration()
+                return
+            }
+            if self.captureSession.canAddInput(input) {
+                self.captureSession.addInput(input)
+            }
+            self.videoOutput.setSampleBufferDelegate(self, queue: self.processingQueue)
+            self.videoOutput.alwaysDiscardsLateVideoFrames = true
+            if self.captureSession.canAddOutput(self.videoOutput) {
+                self.captureSession.addOutput(self.videoOutput)
+            }
+            if let connection = self.videoOutput.connection(with: .video) {
+                connection.videoRotationAngle = 90
+                if connection.isVideoMirroringSupported {
+                    connection.isVideoMirrored = true
+                }
+            }
+            self.captureSession.commitConfiguration()
+            self.captureSession.startRunning()
+        }
     }
 
     func stopSession() {
-        captureSession.stopRunning()
-        isSessionRunning = false
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.captureSession.stopRunning()
+            Task { @MainActor in
+                self.isSessionRunning = false
+            }
+        }
     }
 
     func resetCount() {

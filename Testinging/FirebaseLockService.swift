@@ -16,6 +16,8 @@ final class FirebaseLockService: ObservableObject {
     private var listener: ListenerRegistration?
 
     @Published private(set) var shouldBlockThisDevice = false
+    /// Current user's UID (set when signed in). Share this with the other phone so they can send you a challenge.
+    @Published private(set) var currentUserUid: String?
 
     // MARK: - Create user (users/{uid})
 
@@ -129,6 +131,7 @@ final class FirebaseLockService: ObservableObject {
 
         ensureSignedIn { [weak self] uid in
             guard let self else { return }
+            self.currentUserUid = uid
 
             self.listener = self.db.collection("challenges")
                 .whereField("toUser", isEqualTo: uid)
