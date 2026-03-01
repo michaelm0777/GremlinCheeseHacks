@@ -7,6 +7,8 @@ import Foundation
 import Combine
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseStorage
+
 
 @MainActor
 final class FirebaseLockService: ObservableObject {
@@ -96,6 +98,48 @@ final class FirebaseLockService: ObservableObject {
                         onShouldBlock(shouldBlock)
                     }
                 }
+        }
+    }
+    
+    func uploadProofVideo(
+        challengeId: String,
+        fileUrl: URL
+    ) {
+        ensureSignedIn { [weak self] uid in
+            guard let self else { return }
+
+            let path = "proof/\(challengeId)/\(uid).mp4"
+            let storageRef = Storage.storage().reference(withPath: path)
+
+            storageRef.putFile(from: fileUrl, metadata: nil) { _, error in
+                if let error = error {
+                    print("Storage upload error:", error)
+                    return
+                }
+
+                storageRef.downloadURL { url, error in
+                    if let error = error {
+                        print("Download URL error:", error)
+                        return
+                    }
+                    guard let url = url else { return }
+
+                    self.db.collection("challenges").document(challengeId).setData([
+                        "proof": [
+                            "uploaded": true,
+                            "videoPath": path,
+                            "videoUrl": url.absoluteString,
+                            "uploadedAt": FieldValue.serverTimestamp()
+                        ]
+                    ], merge: true) { error in
+                        if let error = error {
+                            print("Firestore proof update error:", error)
+                        } else {
+                            print("Proof video saved for challenge:", challengeId)
+                        }
+                    }
+                }
+            }
         }
     }
 
