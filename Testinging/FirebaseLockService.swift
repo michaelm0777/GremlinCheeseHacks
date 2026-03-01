@@ -37,6 +37,7 @@ final class FirebaseLockService: ObservableObject {
     // MARK: - Create challenge (manual toUser uid)
 
     func createChallenge(
+        toUser: String,
         exerciseType: String,
         reps: Int,
         blockDurationSec: Int
@@ -46,7 +47,7 @@ final class FirebaseLockService: ObservableObject {
 
             let challengeData: [String: Any] = [
                 "fromUser": myUid,
-                "toUser": "Y4rd9Hm6w6hU7ndmpYyAUtxYycx2",
+                "toUser": toUser,
                 "status": "pending",
                 "createdAt": FieldValue.serverTimestamp(),
                 "blockDuration": blockDurationSec,
@@ -65,9 +66,35 @@ final class FirebaseLockService: ObservableObject {
                 if let error = error {
                     print("Create challenge error:", error)
                 } else {
-                    print("Challenge created for:", "Y4rd9Hm6w6hU7ndmpYyAUtxYycx2")
+                    print("Challenge created for:", toUser)
                 }
             }
+        }
+    }
+
+    /// Marks all pending challenges targeting the current user as completed so the listener sees no pending and unblock is effective.
+    func resolveChallengesTargetingMe(completion: (() -> Void)? = nil) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+            self.db.collection("challenges")
+                .whereField("toUser", isEqualTo: myUid)
+                .whereField("status", isEqualTo: "pending")
+                .getDocuments { [weak self] snapshot, error in
+                    guard let self else { return }
+                    if let error = error {
+                        print("Resolve challenges error:", error)
+                        completion?()
+                        return
+                    }
+                    let batch = self.db.batch()
+                    snapshot?.documents.forEach { doc in
+                        batch.updateData(["status": "completed"], forDocument: doc.reference)
+                    }
+                    batch.commit { err in
+                        if let err = err { print("Batch commit error:", err) }
+                        completion?()
+                    }
+                }
         }
     }
 
