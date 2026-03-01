@@ -35,6 +35,19 @@ final class FirebaseLockService: ObservableObject {
 
     // NEW: exposed for UI
     @Published var currentStreakDays: Int? = nil
+    
+    struct FriendSummary: Identifiable {
+        var id: String { uid }
+        let uid: String
+        var username: String
+        var streakDays: Int
+        var bigWins: Int
+    }
+
+    @Published private(set) var friends: [FriendSummary] = []
+
+    private var pairsListener: ListenerRegistration?
+    private var friendProfileListeners: [String: ListenerRegistration] = [:] // key = friend uid
 
     // MARK: - Create user (users/{uid})
 
@@ -339,6 +352,88 @@ final class FirebaseLockService: ObservableObject {
                 }
         }
     }
+    
+    func startListeningForFriends() {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            self.pairsListener?.remove()
+            self.pairsListener = self.db.collection("pairs")
+                .whereField("members", arrayContains: myUid)
+                .addSnapshotListener { [weak self] snap, error in
+                    guard let self else { return }
+                    if let error = error {
+                        print("Pairs listen error:", error)
+                        return
+                    }
+
+                    let pairDocs = snap?.documents ?? []
+                    let otherUids: [String] = pairDocs.compactMap { doc in
+                        let members = doc.data()["members"] as? [String] ?? []
+                        return members.first(where: { $0 != myUid })
+                    }
+
+                    // Remove listeners for users no longer paired
+                    let currentSet = Set(self.friendProfileListeners.keys)
+                    let nextSet = Set(otherUids)
+                    let removed = currentSet.subtracting(nextSet)
+                    for uid in removed {
+                        self.friendProfileListeners[uid]?.remove()
+                        self.friendProfileListeners.removeValue(forKey: uid)
+                    }
+
+                    // Start listeners for new friends
+                    let added = nextSet.subtracting(currentSet)
+                    for uid in added {
+                        let listener = self.db.collection("users").document(uid)
+                            .addSnapshotListener { [weak self] userSnap, userErr in
+                                guard let self else { return }
+                                if let userErr = userErr {
+                                    print("Friend profile listen error:", userErr)
+                                    return
+                                }
+
+                                let data = userSnap?.data() ?? [:]
+                                let username = (data["username"] as? String) ?? "unknown"
+                                let streak = (data["streakDays"] as? Int) ?? 0
+                                let bigWins = (data["challengeScore"] as? Int) ?? 0
+
+                                Task { @MainActor in
+                                    // Upsert friend summary in array
+                                    if let idx = self.friends.firstIndex(where: { $0.uid == uid }) {
+                                        self.friends[idx].username = username
+                                        self.friends[idx].streakDays = streak
+                                        self.friends[idx].bigWins = bigWins
+                                    } else {
+                                        self.friends.append(FriendSummary(
+                                            uid: uid,
+                                            username: username,
+                                            streakDays: streak,
+                                            bigWins: bigWins
+                                        ))
+                                    }
+
+                                    // Keep stable ordering
+                                    self.friends.sort { $0.username.lowercased() < $1.username.lowercased() }
+                                }
+                            }
+
+                        self.friendProfileListeners[uid] = listener
+                    }
+
+                    // Ensure placeholders exist quickly even before user docs arrive
+                    Task { @MainActor in
+                        for uid in otherUids {
+                            if self.friends.contains(where: { $0.uid == uid }) == false {
+                                self.friends.append(FriendSummary(uid: uid, username: "loading…", streakDays: 0, bigWins: 0))
+                            }
+                        }
+                        self.friends = self.friends.filter { nextSet.contains($0.uid) }
+                        self.friends.sort { $0.username.lowercased() < $1.username.lowercased() }
+                    }
+                }
+        }
+    }
 
     func uploadProofVideo(
         challengeId: String,
@@ -432,6 +527,14 @@ final class FirebaseLockService: ObservableObject {
 
         shouldBlockThisDevice = false
         activeChallenge = nil
+        
+        pairsListener?.remove()
+        pairsListener = nil
+
+        friendProfileListeners.values.forEach { $0.remove() }
+        friendProfileListeners.removeAll()
+
+        friends = []
     }
 
     // MARK: - Auth helper
