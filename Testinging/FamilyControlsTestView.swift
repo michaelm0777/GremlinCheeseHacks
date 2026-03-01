@@ -1609,7 +1609,7 @@ private struct ReceiverChallengeFlowView: View {
                 Button(role: .destructive) {
                     selectedAction = .forfeit
                 } label: {
-                    Text("forfeit challenge")
+                    Text("forfeit challenge (do \(max(1, ch.reps - 5)))")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(Color.red.opacity(0.75), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1655,7 +1655,9 @@ private struct ReceiverChallengeFlowView: View {
             switch action {
             case .startBig:
                 return incomingR + 5
-            case .complete, .continueChain, .forfeit:
+            case .forfeit:
+                return max(1, incomingR - 5)   // <-- key change
+            case .complete, .continueChain:
                 return incomingR
             }
         }()
