@@ -31,6 +31,7 @@ struct FamilyControlsTestView: View {
     @AppStorage("didOnboard_gremlin") private var didOnboard = false
     @AppStorage("gremlin_username") private var gremlinUsername = ""
     @State private var activeSheet: ActiveSheet? = nil
+    @State private var onboardingNameDraft: String = ""
 
     // MARK: - Create challenge UI state (new)
     @State private var pendingSendChallenge: PendingSendChallenge? = nil
@@ -51,14 +52,22 @@ struct FamilyControlsTestView: View {
 
                 if gremlinUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     OnboardingView(
-                        name: $gremlinUsername,
+                        name: $onboardingNameDraft,
                         onContinue: { enteredName in
-                            gremlinUsername = enteredName
-                            lockService.createUserDb(name: enteredName)
+                            let trimmed = enteredName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return }
+
+                            gremlinUsername = trimmed
+                            lockService.createUserDb(name: trimmed)
                             didOnboard = true
-                            
+                            onboardingNameDraft = ""
                         }
                     )
+                    .onAppear {
+                        if onboardingNameDraft.isEmpty {
+                            onboardingNameDraft = gremlinUsername // usually empty, but safe
+                        }
+                    }
                 } else {
                     HomeView(
                         currentStreakDays: currentStreakDays,
