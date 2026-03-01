@@ -29,6 +29,7 @@ struct FamilyControlsTestView: View {
 
     // MARK: - UI routing (new, keeps existing vars intact)
     @AppStorage("didOnboard_gremlin") private var didOnboard = false
+    @AppStorage("gremlin_username") private var gremlinUsername = ""
     @State private var activeSheet: ActiveSheet? = nil
 
     // MARK: - Create challenge UI state (new)
@@ -49,13 +50,17 @@ struct FamilyControlsTestView: View {
                 GremlinTheme.background.ignoresSafeArea()
 
                 if !didOnboard {
-                    OnboardingView {
-                        didOnboard = true
-                    }
+                    OnboardingView(
+                        name: $gremlinUsername,
+                        onContinue: { enteredName in
+                            lockService.createUserDb(name: enteredName)
+                            didOnboard = true
+                        }
+                    )
                 } else {
                     HomeView(
                         currentStreakDays: currentStreakDays,
-                        userDisplayName: lockService.currentUserNameFallback,
+                        userDisplayName: lockService.currentUsername ?? gremlinUsername,
                         dateString: HomeView.defaultDateStringFallback,
                         onTapNewChallenge: {
                             activeSheet = .createChallenge
@@ -395,7 +400,10 @@ private enum GremlinTheme {
 // MARK: - Onboarding
 
 private struct OnboardingView: View {
-    var onContinue: () -> Void
+    @Binding var name: String
+    var onContinue: (String) -> Void
+
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(spacing: 18) {
@@ -421,10 +429,41 @@ private struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
 
+            // NEW: name input
+            VStack(alignment: .leading, spacing: 10) {
+                Text("YOUR NAME")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(GremlinTheme.textSecondary)
+                    .tracking(1.0)
+
+                TextField("alex", text: $name)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .focused($nameFocused)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 8)
+
             Spacer()
 
-            Button(action: onContinue) {
-                Text("let's go")
+            Button {
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    nameFocused = true
+                    return
+                }
+                onContinue(trimmed)
+            } label: {
+                Text("create profile")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -433,6 +472,8 @@ private struct OnboardingView: View {
                     .shadow(color: GremlinTheme.accentGreen.opacity(0.25), radius: 16, x: 0, y: 10)
             }
             .padding(.horizontal, 28)
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
 
             Text("tap to continue")
                 .font(.system(size: 12, weight: .medium))
@@ -442,6 +483,7 @@ private struct OnboardingView: View {
             Spacer(minLength: 10)
         }
         .padding(.horizontal, 18)
+        .onAppear { nameFocused = true }
     }
 }
 

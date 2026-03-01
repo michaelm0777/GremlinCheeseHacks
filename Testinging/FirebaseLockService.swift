@@ -35,6 +35,7 @@ final class FirebaseLockService: ObservableObject {
 
     // NEW: exposed for UI
     @Published var currentStreakDays: Int? = nil
+    @Published private(set) var currentUsername: String? = nil
     
     struct FriendSummary: Identifiable {
         var id: String { uid }
@@ -345,11 +346,12 @@ final class FirebaseLockService: ObservableObject {
 
                     let data = snap?.data() ?? [:]
                     let streak = data["streakDays"] as? Int ?? 0
+                    let username = data["username"] as? String
 
                     Task { @MainActor in
                         self.currentStreakDays = streak
+                        self.currentUsername = username
                     }
-                }
         }
     }
     
