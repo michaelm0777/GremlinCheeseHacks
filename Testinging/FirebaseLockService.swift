@@ -66,6 +66,41 @@ final class FirebaseLockService: ObservableObject {
         }
     }
     
+    func createChallenge(
+        exerciseType: String,
+        reps: Int,
+        blockDurationSec: Int
+    ) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            let challengeData: [String: Any] = [
+                "fromUser": myUid,
+                "toUser": toUserUid,
+                "status": "pending",
+                "createdAt": FieldValue.serverTimestamp(),
+                "blockDuration": blockDurationSec,
+                "exercise": [
+                    "type": exerciseType,
+                    "reps": reps
+                ],
+                "proof": [
+                    "uploaded": false,
+                    "videoUrl": NSNull(),
+                    "uploadedAt": NSNull()
+                ]
+            ]
+
+            self.db.collection("challenges").addDocument(data: challengeData) { error in
+                if let error = error {
+                    print("Create challenge error:", error)
+                } else {
+                    print("Challenge created for:", toUserUid)
+                }
+            }
+        }
+    }
+    /*
     func createChallengeToPairedUser(
         exerciseType: String,
         reps: Int,
@@ -115,7 +150,7 @@ final class FirebaseLockService: ObservableObject {
                     }
                 }
         }
-    }
+    }*/
 
     // MARK: - User creation (Auth UID doc id)
 
