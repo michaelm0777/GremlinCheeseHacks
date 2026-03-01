@@ -129,6 +129,7 @@ final class FirebaseLockService: ObservableObject {
                         }
                     }
                 }
+            
         }
     }
     
@@ -352,6 +353,7 @@ final class FirebaseLockService: ObservableObject {
                         self.currentStreakDays = streak
                         self.currentUsername = username
                     }
+                }
         }
     }
     
