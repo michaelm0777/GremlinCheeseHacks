@@ -783,21 +783,7 @@ private struct FriendsView: View {
                                                 .frame(width: 8, height: 8)
                                         }
 
-                                        Text(f.subtitle)
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundStyle(GremlinTheme.textSecondary)
-
-                                        HStack(spacing: 12) {
-                                            HStack(spacing: 8) {
-                                                Image(systemName: "bolt.fill")
-                                                    .font(.system(size: 12, weight: .bold))
-                                                    .foregroundStyle(Color.orange.opacity(0.9))
-
-                                                Text("\(f.streakDays) day streak")
-                                                    .font(.system(size: 14, weight: .semibold))
-                                                    .foregroundStyle(Color.orange.opacity(0.9))
-                                            }
-
+                                        VStack(alignment: .leading, spacing: 10) {
                                             HStack(spacing: 8) {
                                                 Image(systemName: "trophy.fill")
                                                     .font(.system(size: 12, weight: .bold))
@@ -806,9 +792,24 @@ private struct FriendsView: View {
                                                 Text("\(f.bigWins) big wins")
                                                     .font(.system(size: 14, weight: .semibold))
                                                     .foregroundStyle(Color.yellow.opacity(0.9))
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.85)
+                                            }
+
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "bolt.fill")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(Color.orange.opacity(0.9))
+
+                                                Text("\(f.streakDays) day streak")
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundStyle(Color.orange.opacity(0.9))
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.85)
                                             }
                                         }
-                                        .padding(.top, 2)
+                                        .padding(.top, 6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     }
 
                                     Spacer()
