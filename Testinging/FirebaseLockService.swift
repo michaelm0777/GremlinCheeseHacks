@@ -9,13 +9,13 @@ import FirebaseFirestore
 import FirebaseAuth
 import FirebaseStorage
 
-
 @MainActor
 final class FirebaseLockService: ObservableObject {
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
 
     @Published private(set) var shouldBlockThisDevice = false
+    @Published private(set) var pendingBlockedBundleIds: [String] = []
 
     // MARK: - Create user (users/{uid})
 
@@ -42,7 +42,8 @@ final class FirebaseLockService: ObservableObject {
         toUser: String,
         exerciseType: String,
         reps: Int,
-        blockDurationSec: Int
+        blockDurationSec: Int,
+        blockedBundleIds: [String]
     ) {
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
@@ -57,6 +58,7 @@ final class FirebaseLockService: ObservableObject {
                     "type": exerciseType,
                     "reps": reps
                 ],
+                "blockedBundleIds": blockedBundleIds,
                 "proof": [
                     "uploaded": false,
                     "videoUrl": NSNull(),
@@ -118,16 +120,23 @@ final class FirebaseLockService: ObservableObject {
                         return
                     }
 
-                    let shouldBlock = (snapshot?.documents.isEmpty == false)
+                    let docs = snapshot?.documents ?? []
+                    let shouldBlock = !docs.isEmpty
+
+                    var bundleIds: [String] = []
+                    if let first = docs.first {
+                        bundleIds = first.data()["blockedBundleIds"] as? [String] ?? []
+                    }
 
                     Task { @MainActor in
                         self.shouldBlockThisDevice = shouldBlock
+                        self.pendingBlockedBundleIds = shouldBlock ? bundleIds : []
                         onShouldBlock(shouldBlock)
                     }
                 }
         }
     }
-    
+
     func uploadProofVideo(
         challengeId: String,
         fileUrl: URL
@@ -174,6 +183,7 @@ final class FirebaseLockService: ObservableObject {
         listener?.remove()
         listener = nil
         shouldBlockThisDevice = false
+        pendingBlockedBundleIds = []
     }
 
     // MARK: - Auth helper
