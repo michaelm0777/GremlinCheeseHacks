@@ -17,6 +17,9 @@ struct FamilyControlsTestView: View {
     // For testing: who to send a challenge to
     @State private var toUserUid: String = ""
 
+    @State private var showBlockPushupGate = false
+    @State private var showUnblockPushupGate = false
+
     @StateObject private var lockService = FirebaseLockService()
 
     var body: some View {
@@ -42,17 +45,13 @@ struct FamilyControlsTestView: View {
                 .disabled(!isAuthorized)
 
                 Button("Send Challenge (locks receiver)") {
-                    lockService.createChallenge(
-                        exerciseType: "jumping_jacks",
-                        reps: 20,
-                        blockDurationSec: 300
-                    )
+                    showBlockPushupGate = true
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(toUserUid.isEmpty)
 
                 Button("Unblock All Apps", role: .destructive) {
-                    unblockAppsLocally()
+                    showUnblockPushupGate = true
                 }
 
                 Spacer()
@@ -60,6 +59,32 @@ struct FamilyControlsTestView: View {
             .padding()
         }
         .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+        .fullScreenCover(isPresented: $showBlockPushupGate) {
+            PushupGateView(
+                title: "Do 3 pushups to send block",
+                requiredReps: 3,
+                onComplete: {
+                    lockService.createChallenge(
+                        toUser: toUserUid,
+                        exerciseType: "pushups",
+                        reps: 3,
+                        blockDurationSec: 300
+                    )
+                },
+                onCancel: {}
+            )
+        }
+        .fullScreenCover(isPresented: $showUnblockPushupGate) {
+            PushupGateView(
+                title: "Do 3 pushups to unblock",
+                requiredReps: 3,
+                onComplete: {
+                    lockService.resolveChallengesTargetingMe()
+                    unblockAppsLocally()
+                },
+                onCancel: {}
+            )
+        }
         .onAppear {
             lockService.startListeningForChallenges { shouldBlock in
                 if shouldBlock {
