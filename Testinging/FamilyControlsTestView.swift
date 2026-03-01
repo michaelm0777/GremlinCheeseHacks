@@ -8,6 +8,7 @@ import FamilyControls
 import ManagedSettings
 import CoreImage.CIFilterBuiltins
 import AVFoundation
+import FamilyControls
 
 private let managedSettingsStore = ManagedSettingsStore()
 
@@ -99,6 +100,9 @@ struct FamilyControlsTestView: View {
             .navigationBarHidden(true)
         }
         .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+        .onChange(of: selection) { newValue in
+            SelectionStore.save(newValue)
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .friends:
@@ -175,16 +179,16 @@ struct FamilyControlsTestView: View {
                     onCreateUser: {
                         lockService.createUserDb(name: "name placeholder")
                     },
+                    onResetAppData: {
+                        resetLocalAppData()
+                        didOnboard = false
+                        gremlinUsername = ""
+                    },
                     onUnblockGate: {
                         activeSheet = nil
                         DispatchQueue.main.async {
                             showUnblockPushupGate = true
                         }
-                    },
-                    onResetAppData: {
-                        resetLocalAppData()
-                        didOnboard = false
-                        gremlinUsername = ""
                     },
                     hasActiveChallenge: lockService.shouldBlockThisDevice
                 )
@@ -392,6 +396,31 @@ struct FamilyControlsTestView: View {
             case .createChallenge: return "createChallenge"
             case .settings: return "settings"
             }
+        }
+    }
+}
+
+enum SelectionStore {
+    private static let key = "gremlin_selection"
+
+    static func save(_ selection: FamilyActivitySelection) {
+        do {
+            let data = try JSONEncoder().encode(selection)
+            UserDefaults.standard.set(data, forKey: key)
+        } catch {
+            print("Failed to save selection:", error)
+        }
+    }
+
+    static func load() -> FamilyActivitySelection {
+        guard let data = UserDefaults.standard.data(forKey: key) else {
+            return FamilyActivitySelection()
+        }
+        do {
+            return try JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+        } catch {
+            print("Failed to load selection:", error)
+            return FamilyActivitySelection()
         }
     }
 }
