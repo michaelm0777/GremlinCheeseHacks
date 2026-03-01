@@ -18,13 +18,29 @@ struct PushupGateView: View {
 
     var body: some View {
         ZStack {
-            CameraPreviewView(previewLayer: cameraManager.previewLayer)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
+            // Only show camera preview after session is running to avoid accessing session/layer during config (prevents freeze/crash).
+            if cameraManager.isSessionRunning {
+                CameraPreviewView(previewLayer: cameraManager.previewLayer)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
 
-            PoseOverlayView(phase: cameraManager.currentPhase, posePoints: cameraManager.posePoints)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
+                PoseOverlayView(phase: cameraManager.currentPhase, posePoints: cameraManager.posePoints)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            } else {
+                Color.black
+                    .ignoresSafeArea()
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.white)
+                    .scaleEffect(1.2)
+                if cameraManager.errorMessage == nil {
+                    Text("Starting camera…")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.top, 60)
+                }
+            }
 
             VStack(spacing: 16) {
                 Text(title)

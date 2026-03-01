@@ -14,6 +14,8 @@ final class FirebaseLockService: ObservableObject {
     private var listener: ListenerRegistration?
 
     @Published private(set) var shouldBlockThisDevice = false
+    /// Current user's UID (set when signed in). Share this with the other phone so they can send you a challenge.
+    @Published private(set) var currentUserUid: String?
 
     // MARK: - Create user (users/{uid})
 
@@ -42,12 +44,14 @@ final class FirebaseLockService: ObservableObject {
         reps: Int,
         blockDurationSec: Int
     ) {
+        let toUserTrimmed = toUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !toUserTrimmed.isEmpty else { return }
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
 
             let challengeData: [String: Any] = [
                 "fromUser": myUid,
-                "toUser": toUser,
+                "toUser": toUserTrimmed,
                 "status": "pending",
                 "createdAt": FieldValue.serverTimestamp(),
                 "blockDuration": blockDurationSec,
@@ -66,7 +70,7 @@ final class FirebaseLockService: ObservableObject {
                 if let error = error {
                     print("Create challenge error:", error)
                 } else {
-                    print("Challenge created for:", toUser)
+                    print("Challenge created for:", toUserTrimmed)
                 }
             }
         }
@@ -105,6 +109,7 @@ final class FirebaseLockService: ObservableObject {
 
         ensureSignedIn { [weak self] uid in
             guard let self else { return }
+            self.currentUserUid = uid
 
             self.listener = self.db.collection("challenges")
                 .whereField("toUser", isEqualTo: uid)
