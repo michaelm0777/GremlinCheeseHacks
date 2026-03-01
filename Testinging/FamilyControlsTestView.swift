@@ -91,16 +91,19 @@ struct FamilyControlsTestView: View {
                 )
             case .addFriend:
                 AddFriendView(
-                    uidText: lockService.currentUserUid ?? "loading_uid",
-                    onClose: { activeSheet = nil },
-                    onShareQr: {
-                        showMyQr = true
-                    },
-                    onScanQr: {
-                        showScanner = true
-                    },
-                    pairingStatusText: pairingStatusText
-                )
+                        uidText: lockService.currentUserUid ?? "loading_uid",
+                        onClose: { activeSheet = nil },
+                        onShareQr: {
+                            showMyQr = true
+                        },
+                        onScanQr: {
+                            activeSheet = nil
+                            DispatchQueue.main.async {
+                                showScanner = true
+                            }
+                        },
+                        pairingStatusText: pairingStatusText
+                    )
             case .createChallenge:
                 CreateChallengeView(
                     toUserUid: $toUserUid,
@@ -113,7 +116,11 @@ struct FamilyControlsTestView: View {
                         selectedExerciseType = exerciseType
                         customRepsText = "\(reps)"
                         selectedRepsPreset = reps
-                        showBlockPushupGate = true
+
+                        activeSheet = nil
+                        DispatchQueue.main.async {
+                            showBlockPushupGate = true
+                        }
                     }
                 )
             case .settings:
