@@ -2,9 +2,6 @@
 //  FamilyControlsTestView.swift
 //  Testinging
 //
-//  Two-device developer flow: each phone runs this app and listens to Firebase.
-//  Friend A sends "lock Friend B" → Friend B’s app blocks its own device (and vice versa).
-//
 
 import SwiftUI
 import FamilyControls
@@ -19,27 +16,31 @@ struct FamilyControlsTestView: View {
     @State private var role: DeviceRole = .friendA
     @State private var name: String = ""
     @State private var hasChosenRole = false
+
+    // New: choose what we listen to
+    @State private var listenToChallenges = false
+
     @StateObject private var lockService = FirebaseLockService()
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                // 1. Request Family Controls authorization
                 Button("Request Authorization") {
                     requestAuthorization()
                 }
 
                 if isAuthorized {
-                    // 2. Choose role (Friend A or Friend B)
+                    Toggle("Listen to challenges (instead of dev-room flags)", isOn: $listenToChallenges)
+
+                    createUserSection
+
                     if !hasChosenRole {
                         rolePickerSection
                     } else {
-                        // 3. Pick apps to control (same selection used when we get "lock" from other device)
                         Button("Pick Apps to Control") {
                             showPicker = true
                         }
 
-                        // 4. Send lock to the other device (like "Friend A completed push-ups → lock Friend B")
                         sendLockSection
 
                         Button("Unblock All Apps", role: .destructive) {
@@ -62,6 +63,11 @@ struct FamilyControlsTestView: View {
         }
         .onChange(of: hasChosenRole) { _, now in
             if now {
+                startFirebaseListener()
+            }
+        }
+        .onChange(of: listenToChallenges) { _, _ in
+            if isAuthorized && hasChosenRole {
                 startFirebaseListener()
             }
         }
@@ -88,13 +94,14 @@ struct FamilyControlsTestView: View {
             }
         }
     }
-    
+
     private var sendLockSection: some View {
         VStack(spacing: 8) {
             Text("Send lock to the other device (they will block on their phone)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
             Button {
                 lockService.sendLockToOther()
             } label: {
@@ -107,28 +114,37 @@ struct FamilyControlsTestView: View {
             .disabled(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
         }
     }
-    
-    private var createUser: some View {
+
+    private var createUserSection: some View {
         VStack(spacing: 8) {
             Text("Create your user in the database")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
             Button("Create user") {
                 lockService.createUserDb(name: "name placeholder")
             }
             .buttonStyle(.borderedProminent)
-            .buttonStyle(.borderedProminent)
-            .disabled(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
         }
     }
 
     private func startFirebaseListener() {
-        lockService.startListening(role: role) { shouldBlock in
-            if shouldBlock {
-                blockSelectedApps()
-            } else {
-                unblockAppsLocally()
+        if listenToChallenges {
+            lockService.startListeningForChallenges { shouldBlock in
+                if shouldBlock {
+                    blockSelectedApps()
+                } else {
+                    unblockAppsLocally()
+                }
+            }
+        } else {
+            lockService.startListening(role: role) { shouldBlock in
+                if shouldBlock {
+                    blockSelectedApps()
+                } else {
+                    unblockAppsLocally()
+                }
             }
         }
     }
@@ -149,7 +165,6 @@ struct FamilyControlsTestView: View {
         managedSettingsStore.shield.applicationCategories = .specific(selection.categoryTokens)
     }
 
-    /// Clears shield on this device only. Use when responding to Firebase "unlock" or when user taps Unblock (then also call clearMyLock()).
     private func unblockAppsLocally() {
         managedSettingsStore.shield.applications = []
         managedSettingsStore.shield.applicationCategories = .none
