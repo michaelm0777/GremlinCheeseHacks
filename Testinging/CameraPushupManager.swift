@@ -7,31 +7,35 @@ import AVFoundation
 import Vision
 import Combine
 
-private let downAngleThreshold: Double = 100   // elbow angle below this = "down"
-private let upAngleThreshold: Double = 150     // elbow angle above this = "up"
-private let minConfidence: Float = 0.4
+private let downAngleThreshold: Double = 115   // elbow angle below this = "down" (looser: don't need to go as low)
+private let upAngleThreshold: Double = 140     // elbow angle above this = "up" (looser: don't need full extension)
+private let minConfidence: Float = 0.35
 
-/// Manages camera capture and runs body pose detection to count pushups.
-/// A rep is counted when the user goes from "down" (arms bent) to "up" (arms extended).
+/// Manages camera capture and runs body pose detection to count pushups and jumping jacks.
 @MainActor
 final class CameraPushupManager: NSObject, ObservableObject {
+    enum ExerciseMode: String, CaseIterable {
+        case pushup = "Pushups"
+        case jumpingJack = "Jumping Jacks"
+    }
+
+    @Published var exerciseMode: ExerciseMode = .pushup
     @Published private(set) var pushupCount: Int = 0
+    @Published private(set) var jumpingJackCount: Int = 0
     @Published private(set) var isSessionRunning: Bool = false
     @Published private(set) var errorMessage: String?
-    /// Current pose phase for UI; updated every frame when pose is detected.
-    @Published private(set) var currentPhase: PushupPhase = .unknown
-    /// Normalized (0–1) joint positions for skeleton overlay; keys match Vision joint names.
+    @Published private(set) var currentPushupPhase: PushupPhase = .unknown
+    @Published private(set) var currentJumpingJackPhase: JumpingJackPhase = .unknown
     @Published private(set) var posePoints: [String: CGPoint]?
 
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "pushup.capture.session", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "pushup.vision")
-    /// Used only from processingQueue after init; safe for nonisolated access.
     private nonisolated(unsafe) var bodyPoseRequest: VNDetectHumanBodyPoseRequest!
 
-    /// Rep detection state: we count when transitioning from down -> up
-    private var lastPhase: PushupPhase = .unknown
+    private var lastPushupPhase: PushupPhase = .unknown
+    private var lastJumpingJackPhase: JumpingJackPhase = .unknown
 
     enum PushupPhase: String {
         case unknown = "—"
@@ -118,7 +122,17 @@ final class CameraPushupManager: NSObject, ObservableObject {
 
     func resetCount() {
         pushupCount = 0
-        lastPhase = .unknown
+        jumpingJackCount = 0
+        lastPushupPhase = .unknown
+        lastJumpingJackPhase = .unknown
+    }
+
+    /// Current rep count for the active exercise mode.
+    var currentCount: Int {
+        switch exerciseMode {
+        case .pushup: return pushupCount
+        case .jumpingJack: return jumpingJackCount
+        }
     }
 
     private lazy var _previewLayer: AVCaptureVideoPreviewLayer = {
@@ -145,20 +159,41 @@ extension CameraPushupManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 
+    enum JumpingJackPhase: String {
+        case unknown = "-"
+        case open = "Open"
+        case closed = "Closed"
+    }
+
     private nonisolated func processObservation(_ observation: VNHumanBodyPoseObservation) {
-        let angle = Self.elbowAngle(from: observation)
-        let phase: PushupPhase = angle.map { a in
-            a >= upAngleThreshold ? .up : (a <= downAngleThreshold ? .down : .unknown)
-        } ?? .unknown
         let points = Self.extractPosePoints(from: observation)
+
+        let pushupPhase: PushupPhase = {
+            guard let angle = Self.elbowAngle(from: observation) else { return .unknown }
+            if angle >= upAngleThreshold { return .up }
+            if angle <= downAngleThreshold { return .down }
+            return .unknown
+        }()
+
+        let jumpingJackPhase: JumpingJackPhase = Self.jumpingJackPhase(from: observation)
+
         Task { @MainActor in
-            currentPhase = phase
+            currentPushupPhase = pushupPhase
+            currentJumpingJackPhase = jumpingJackPhase
             posePoints = points
-            if phase == .up || phase == .down {
-                if lastPhase == .down && phase == .up {
+
+            if pushupPhase == .up || pushupPhase == .down {
+                if exerciseMode == .pushup && lastPushupPhase == .down && pushupPhase == .up {
                     pushupCount += 1
                 }
-                lastPhase = phase
+                lastPushupPhase = pushupPhase
+            }
+
+            if jumpingJackPhase == .open || jumpingJackPhase == .closed {
+                if exerciseMode == .jumpingJack && lastJumpingJackPhase == .open && jumpingJackPhase == .closed {
+                    jumpingJackCount += 1
+                }
+                lastJumpingJackPhase = jumpingJackPhase
             }
         }
     }
@@ -172,6 +207,9 @@ extension CameraPushupManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             (.leftShoulder, "leftShoulder"), (.rightShoulder, "rightShoulder"),
             (.leftElbow, "leftElbow"), (.rightElbow, "rightElbow"),
             (.leftWrist, "leftWrist"), (.rightWrist, "rightWrist"),
+            (.leftHip, "leftHip"), (.rightHip, "rightHip"),
+            (.leftKnee, "leftKnee"), (.rightKnee, "rightKnee"),
+            (.leftAnkle, "leftAnkle"), (.rightAnkle, "rightAnkle"),
         ]
         var result = [String: CGPoint]()
         for (name, key) in jointNames {
@@ -214,5 +252,54 @@ extension CameraPushupManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard mag1 > 0, mag2 > 0 else { return 0 }
         let cosAngle = max(-1, min(1, dot / (mag1 * mag2)))
         return acos(cosAngle) * 180 / .pi
+    }
+
+    /// Angle in degrees between two vectors (no vertex).
+    private nonisolated static func angleBetweenVectors(_ v1: (Double, Double), _ v2: (Double, Double)) -> Double {
+        let dot = v1.0 * v2.0 + v1.1 * v2.1
+        let mag1 = sqrt(v1.0 * v1.0 + v1.1 * v1.1)
+        let mag2 = sqrt(v2.0 * v2.0 + v2.1 * v2.1)
+        guard mag1 > 0, mag2 > 0 else { return 0 }
+        let cosAngle = max(-1, min(1, dot / (mag1 * mag2)))
+        return acos(cosAngle) * 180 / .pi
+    }
+
+    /// Angle in degrees between the two arms (shoulder→wrist). ~180° when arms out to sides, small when at sides.
+    private nonisolated static func armSpreadAngle(from observation: VNHumanBodyPoseObservation) -> Double? {
+        func getPoint(_ name: VNHumanBodyPoseObservation.JointName) -> (x: Double, y: Double)? {
+            guard let point = try? observation.recognizedPoint(name), point.confidence >= minConfidence else { return nil }
+            return (Double(point.location.x), Double(point.location.y))
+        }
+        guard let ls = getPoint(.leftShoulder), let lw = getPoint(.leftWrist),
+              let rs = getPoint(.rightShoulder), let rw = getPoint(.rightWrist) else { return nil }
+        let leftArm = (lw.0 - ls.0, lw.1 - ls.1)
+        let rightArm = (rw.0 - rs.0, rw.1 - rs.1)
+        return angleBetweenVectors(leftArm, rightArm)
+    }
+
+    /// Angle in degrees between the two legs (hip→knee). Large when legs spread, small when together.
+    private nonisolated static func torsoLegAngle(from observation: VNHumanBodyPoseObservation) -> Double? {
+        func getPoint(_ name: VNHumanBodyPoseObservation.JointName) -> (x: Double, y: Double)? {
+            guard let point = try? observation.recognizedPoint(name), point.confidence >= minConfidence else { return nil }
+            return (Double(point.location.x), Double(point.location.y))
+        }
+        guard let lh = getPoint(.leftHip), let lk = getPoint(.leftKnee),
+              let rh = getPoint(.rightHip), let rk = getPoint(.rightKnee) else { return nil }
+        let leftLeg = (lk.0 - lh.0, lk.1 - lh.1)
+        let rightLeg = (rk.0 - rh.0, rk.1 - rh.1)
+        return angleBetweenVectors(leftLeg, rightLeg)
+    }
+
+    private static let armOpenThreshold: Double = 120   // arm spread angle above this = "open"
+    private static let armClosedThreshold: Double = 80 // arm spread angle below this = "closed"
+    private static let legOpenThreshold: Double = 35   // leg angle above this = "open"
+    private static let legClosedThreshold: Double = 25 // leg angle below this = "closed"
+
+    private nonisolated static func jumpingJackPhase(from observation: VNHumanBodyPoseObservation) -> JumpingJackPhase {
+        guard let armAngle = armSpreadAngle(from: observation),
+              let legAngle = torsoLegAngle(from: observation) else { return .unknown }
+        if armAngle >= armOpenThreshold && legAngle >= legOpenThreshold { return .open }
+        if armAngle <= armClosedThreshold && legAngle <= legClosedThreshold { return .closed }
+        return .unknown
     }
 }
