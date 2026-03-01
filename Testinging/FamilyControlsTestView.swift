@@ -173,37 +173,73 @@ struct FamilyControlsTestView: View {
                 }
             }
         }
-        // Sender gate (kept from your code)
+        // Sender gate: do the same exercise/reps as the challenge being sent
         .fullScreenCover(isPresented: $showBlockPushupGate) {
-            let reps = Int(customRepsText) ?? (selectedRepsPreset ?? 25)
+            let reps = Int(customRepsText) ?? (selectedRepsPreset ?? 3)
             let targetUid = challengeTargetUid ?? toUserUid
             let exercise = selectedExerciseType.rawValue
+            let exerciseLabel = exercise == "jumping jacks" ? "jumping jacks" : "pushups"
+            let title = "Do \(reps) \(exerciseLabel) to send challenge"
 
-            PushupGateView(
-                title: "Do 3 pushups to send challenge",
-                requiredReps: 3,
-                onComplete: {
-                    lockService.createChallenge(
-                        toUser: targetUid,
-                        exerciseType: exercise,
-                        reps: reps,
-                        blockDurationSec: 300
-                    )
-                },
-                onCancel: {}
-            )
+            if exercise == "jumping jacks" {
+                JumpingJackGateView(
+                    title: title,
+                    requiredReps: reps,
+                    onComplete: {
+                        lockService.createChallenge(
+                            toUser: targetUid,
+                            exerciseType: exercise,
+                            reps: reps,
+                            blockDurationSec: 300
+                        )
+                    },
+                    onCancel: {}
+                )
+            } else {
+                PushupGateView(
+                    title: title,
+                    requiredReps: reps,
+                    onComplete: {
+                        lockService.createChallenge(
+                            toUser: targetUid,
+                            exerciseType: exercise,
+                            reps: reps,
+                            blockDurationSec: 300
+                        )
+                    },
+                    onCancel: {}
+                )
+            }
         }
-        // Receiver unblock gate (kept from your code)
+        // Receiver unblock gate: do the same exercise/reps as the active challenge from Firebase
         .fullScreenCover(isPresented: $showUnblockPushupGate) {
-            PushupGateView(
-                title: "Do 3 pushups to unblock",
-                requiredReps: 3,
-                onComplete: {
-                    lockService.resolveChallengesTargetingMe()
-                    unblockAppsLocally()
-                },
-                onCancel: {}
-            )
+            let challenge = lockService.activeChallenge
+            let exercise = challenge?.exerciseType ?? "pushups"
+            let reps = challenge?.reps ?? 3
+            let exerciseLabel = exercise == "jumping jacks" ? "jumping jacks" : "pushups"
+            let title = "Do \(reps) \(exerciseLabel) to unblock"
+
+            if exercise == "jumping jacks" {
+                JumpingJackGateView(
+                    title: title,
+                    requiredReps: reps,
+                    onComplete: {
+                        lockService.resolveChallengesTargetingMe()
+                        unblockAppsLocally()
+                    },
+                    onCancel: {}
+                )
+            } else {
+                PushupGateView(
+                    title: title,
+                    requiredReps: reps,
+                    onComplete: {
+                        lockService.resolveChallengesTargetingMe()
+                        unblockAppsLocally()
+                    },
+                    onCancel: {}
+                )
+            }
         }
         .onAppear {
             lockService.startListeningForChallenges { shouldBlock in
@@ -792,7 +828,7 @@ private struct FriendsView: View {
             initials: "JW",
             name: "james",
             statusDot: .gray.opacity(0.6),
-            subtitle: "25 pullups",
+            subtitle: "12 jumping jacks",
             streakDays: 5,
             avatarGradient: [Color.orange, Color.red],
             uid: "james_uid_placeholder"
@@ -978,7 +1014,6 @@ private struct AddFriendView: View {
 private enum ChallengeExercise: String, CaseIterable, Identifiable {
     case pushups = "pushups"
     case jumpingJacks = "jumping jacks"
-    case pullups = "pullups"
 
     var id: String { rawValue }
 
@@ -986,7 +1021,6 @@ private enum ChallengeExercise: String, CaseIterable, Identifiable {
         switch self {
         case .pushups: return "figure.strengthtraining.traditional"
         case .jumpingJacks: return "figure.jumprope"
-        case .pullups: return "figure.climbing"
         }
     }
 
@@ -994,7 +1028,6 @@ private enum ChallengeExercise: String, CaseIterable, Identifiable {
         switch self {
         case .pushups: return .orange
         case .jumpingJacks: return .blue
-        case .pullups: return .purple
         }
     }
 }
@@ -1311,14 +1344,14 @@ private struct SettingsView: View {
                                         .font(.system(size: 16, weight: .bold))
                                         .foregroundStyle(.white)
 
-                                    Text("Complete the unblock pushup gate to remove the shield.")
+                                    Text("Complete the same challenge (same exercise & reps) to remove the shield.")
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(GremlinTheme.textSecondary)
 
                                     Button(role: .destructive) {
                                         onUnblockGate()
                                     } label: {
-                                        Text("Unblock My Apps (3 pushups)")
+                                        Text("Unblock My Apps")
                                             .font(.system(size: 14, weight: .bold))
                                             .foregroundStyle(.white)
                                             .frame(maxWidth: .infinity)
@@ -1632,7 +1665,7 @@ struct FamilyControlsTestView: View {
 
                     // MARK: - Blocked state & unblock (existing)
                     if lockService.shouldBlockThisDevice {
-                        Text("You have an active challenge. Complete the same challenge (3 pushups) to unblock your apps.")
+                        Text("You have an active challenge. Complete the same challenge (same exercise & reps) to unblock your apps.")
                             .font(.subheadline)
                             .foregroundStyle(.orange)
                             .padding(8)
@@ -1640,7 +1673,7 @@ struct FamilyControlsTestView: View {
                             .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
                     }
 
-                    Button("Unblock My Apps (3 pushups to unblock)", role: .destructive) {
+                    Button("Unblock My Apps", role: .destructive) {
                         showUnblockPushupGate = true
                     }
 
@@ -1726,15 +1759,23 @@ struct FamilyControlsTestView: View {
             )
         }
         .fullScreenCover(isPresented: $showUnblockPushupGate) {
-            PushupGateView(
-                title: "Do 3 pushups to unblock",
-                requiredReps: 3,
-                onComplete: {
-                    lockService.resolveChallengesTargetingMe()
-                    unblockAppsLocally()
-                },
-                onCancel: {}
-            )
+            Group {
+                let challenge = lockService.activeChallenge
+                let exercise = challenge?.exerciseType ?? "pushups"
+                let reps = challenge?.reps ?? 3
+                let title = "Do \(reps) \(exercise == "jumping jacks" ? "jumping jacks" : "pushups") to unblock"
+                if exercise == "jumping jacks" {
+                    JumpingJackGateView(title: title, requiredReps: reps, onComplete: {
+                        lockService.resolveChallengesTargetingMe()
+                        unblockAppsLocally()
+                    }, onCancel: {})
+                } else {
+                    PushupGateView(title: title, requiredReps: reps, onComplete: {
+                        lockService.resolveChallengesTargetingMe()
+                        unblockAppsLocally()
+                    }, onCancel: {})
+                }
+            }
         }
         .onAppear {
             lockService.startListeningForChallenges { shouldBlock in

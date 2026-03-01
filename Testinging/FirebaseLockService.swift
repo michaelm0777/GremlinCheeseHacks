@@ -16,6 +16,8 @@ final class FirebaseLockService: ObservableObject {
     private var listener: ListenerRegistration?
 
     @Published private(set) var shouldBlockThisDevice = false
+    /// When there is a pending challenge targeting this user, holds the exercise type and reps required to unblock.
+    @Published private(set) var activeChallenge: (exerciseType: String, reps: Int)?
     /// Current user's UID (set when signed in). Share this with the other phone so they can send you a challenge.
     @Published private(set) var currentUserUid: String?
 
@@ -170,10 +172,18 @@ final class FirebaseLockService: ObservableObject {
                         return
                     }
 
-                    let shouldBlock = (snapshot?.documents.isEmpty == false)
+                    let docs = snapshot?.documents ?? []
+                    let shouldBlock = !docs.isEmpty
+                    var challenge: (exerciseType: String, reps: Int)?
+                    if let first = docs.first, let data = first.data()["exercise"] as? [String: Any] {
+                        let type = data["type"] as? String ?? "pushups"
+                        let reps = data["reps"] as? Int ?? 3
+                        challenge = (type, reps)
+                    }
 
                     Task { @MainActor in
                         self.shouldBlockThisDevice = shouldBlock
+                        self.activeChallenge = challenge
                         onShouldBlock(shouldBlock)
                     }
                 }
@@ -226,6 +236,7 @@ final class FirebaseLockService: ObservableObject {
         listener?.remove()
         listener = nil
         shouldBlockThisDevice = false
+        activeChallenge = nil
     }
 
     // MARK: - Auth helper

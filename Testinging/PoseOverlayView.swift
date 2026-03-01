@@ -5,24 +5,55 @@
 
 import SwiftUI
 
-/// Skeleton segments: (startKey, endKey) for drawing lines.
-private let skeletonSegments: [(String, String)] = [
+/// Upper body + torso (no legs) for pushup mode.
+private let pushupSkeletonSegments: [(String, String)] = [
     ("leftEye", "nose"), ("rightEye", "nose"), ("leftEye", "rightEye"),
     ("leftEar", "leftEye"), ("rightEar", "rightEye"),
     ("neck", "leftShoulder"), ("neck", "rightShoulder"),
     ("leftShoulder", "leftElbow"), ("leftElbow", "leftWrist"),
     ("rightShoulder", "rightElbow"), ("rightElbow", "rightWrist"),
+    ("leftShoulder", "leftHip"), ("rightShoulder", "rightHip"), ("leftHip", "rightHip"),
+]
+
+/// Full body including legs for jumping jack mode.
+private let jumpingJackSkeletonSegments: [(String, String)] = [
+    ("leftEye", "nose"), ("rightEye", "nose"), ("leftEye", "rightEye"),
+    ("leftEar", "leftEye"), ("rightEar", "rightEye"),
+    ("neck", "leftShoulder"), ("neck", "rightShoulder"),
+    ("leftShoulder", "leftElbow"), ("leftElbow", "leftWrist"),
+    ("rightShoulder", "rightElbow"), ("rightElbow", "rightWrist"),
+    ("leftShoulder", "leftHip"), ("rightShoulder", "rightHip"), ("leftHip", "rightHip"),
+    ("leftHip", "leftKnee"), ("leftKnee", "leftAnkle"),
+    ("rightHip", "rightKnee"), ("rightKnee", "rightAnkle"),
 ]
 
 struct PoseOverlayView: View {
-    let phase: CameraPushupManager.PushupPhase
+    let mode: CameraPushupManager.ExerciseMode
+    let pushupPhase: CameraPushupManager.PushupPhase
+    let jumpingJackPhase: CameraPushupManager.JumpingJackPhase
     let posePoints: [String: CGPoint]?
-    let phaseLabel: String
 
-    init(phase: CameraPushupManager.PushupPhase, posePoints: [String: CGPoint]?) {
-        self.phase = phase
-        self.posePoints = posePoints
-        self.phaseLabel = (phase == .unknown && posePoints != nil) ? "In between" : phase.rawValue
+    private var segments: [(String, String)] {
+        switch mode {
+        case .pushup: return pushupSkeletonSegments
+        case .jumpingJack: return jumpingJackSkeletonSegments
+        }
+    }
+
+    private var phaseLabel: String {
+        switch mode {
+        case .pushup:
+            return (pushupPhase == .unknown && posePoints != nil) ? "In between" : pushupPhase.rawValue
+        case .jumpingJack:
+            return (jumpingJackPhase == .unknown && posePoints != nil) ? "In between" : jumpingJackPhase.rawValue
+        }
+    }
+
+    private var skeletonColor: Color {
+        switch mode {
+        case .pushup: return .green
+        case .jumpingJack: return .cyan
+        }
     }
 
     var body: some View {
@@ -32,22 +63,21 @@ struct PoseOverlayView: View {
                 if let points = posePoints, !points.isEmpty {
                     Canvas { context, canvasSize in
                         let w = canvasSize.width, h = canvasSize.height
-                        // Vision normalized coords (buffer space). Preview is rotated 90° and mirrored for front camera.
                         func viewPoint(_ p: CGPoint) -> CGPoint {
                             CGPoint(x: p.y * w, y: p.x * h)
                         }
-                        for (startKey, endKey) in skeletonSegments {
+                        for (startKey, endKey) in segments {
                             guard let start = points[startKey], let end = points[endKey] else { continue }
                             var path = Path()
                             path.move(to: viewPoint(start))
                             path.addLine(to: viewPoint(end))
-                            context.stroke(path, with: .color(.green), lineWidth: 3)
+                            context.stroke(path, with: .color(skeletonColor), lineWidth: 3)
                         }
                         for (_, p) in points {
                             let pt = viewPoint(p)
                             context.fill(
                                 Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)),
-                                with: .color(.green)
+                                with: .color(skeletonColor)
                             )
                         }
                     }
