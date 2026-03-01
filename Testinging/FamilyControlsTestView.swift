@@ -358,6 +358,24 @@ struct FamilyControlsTestView: View {
 
 // MARK: - Theme
 
+private func initialsFromName(_ name: String) -> String {
+    let parts = name.split(separator: " ")
+    let first = parts.first?.first.map(String.init) ?? "?"
+    let second = parts.dropFirst().first?.first.map(String.init) ?? (name.dropFirst().first.map(String.init) ?? "")
+    return (first + second).uppercased()
+}
+
+private func avatarGradient(for uid: String) -> [Color] {
+    let h = abs(uid.hashValue)
+    switch h % 5 {
+    case 0: return [Color.pink, Color.red]
+    case 1: return [Color.blue, Color.indigo]
+    case 2: return [Color.purple, Color.pink]
+    case 3: return [Color.orange, Color.red]
+    default: return [Color.teal, Color.cyan]
+    }
+}
+
 private enum GremlinTheme {
     static let background = LinearGradient(
         gradient: Gradient(colors: [
@@ -741,11 +759,10 @@ private struct FriendsView: View {
         let initials: String
         let name: String
         let statusDot: Color
-        let subtitle: String
         let streakDays: Int
+        let bigWins: Int
         let avatarGradient: [Color]
         let uid: String
-        let bigWins: Int
     }
 
     let friends: [Friend]
@@ -890,51 +907,46 @@ private struct FriendsView: View {
             initials: "SJ",
             name: "sarah",
             statusDot: .green,
-            subtitle: "beat you at pushups 💪",
             streakDays: 12,
+            bigWins: 3,
             avatarGradient: [Color.pink, Color.red],
             uid: "sarah_uid_placeholder",
-            bigWins: 3,
         ),
         Friend(
             initials: "MC",
             name: "mike",
             statusDot: .gray.opacity(0.6),
-            subtitle: "50 jumping jacks",
             streakDays: 8,
+            bigWins: 3,
             avatarGradient: [Color.blue, Color.indigo],
             uid: "mike_uid_placeholder",
-            bigWins: 3,
         ),
         Friend(
             initials: "ED",
             name: "emma",
             statusDot: .green,
-            subtitle: "absolutely destroyed you",
             streakDays: 15,
+            bigWins: 3,
             avatarGradient: [Color.purple, Color.pink],
             uid: "emma_uid_placeholder",
-            bigWins: 3,
         ),
         Friend(
             initials: "JW",
             name: "james",
             statusDot: .gray.opacity(0.6),
-            subtitle: "12 jumping jacks",
             streakDays: 5,
+            bigWins: 3,
             avatarGradient: [Color.orange, Color.red],
             uid: "james_uid_placeholder",
-            bigWins: 3,
         ),
         Friend(
             initials: "LA",
             name: "lisa",
             statusDot: .green,
-            subtitle: "on fire this week 🔥",
             streakDays: 20,
+            bigWins: 3,
             avatarGradient: [Color.teal, Color.cyan],
             uid: "lisa_uid_placeholder",
-            bigWins: 3,
         )
     ]
 }
