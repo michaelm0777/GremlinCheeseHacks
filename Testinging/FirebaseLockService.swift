@@ -10,6 +10,7 @@
 import Foundation
 import Combine
 import FirebaseFirestore
+import FirebaseAuth
 
 /// Role in the two-device pair. Each device picks one role and shares the same room ID.
 enum DeviceRole: String, CaseIterable {
@@ -39,6 +40,26 @@ final class FirebaseLockService: ObservableObject {
         roomRef.setData([field: true], merge: true) { [weak self] error in
             if let error = error {
                 print("Firebase sendLock error:", error)
+            }
+        }
+    }
+    
+    func createUserDb(name: String) {
+        Auth.auth().signInAnonymously { [weak self] result, error in
+            if let error = error {
+                print("Auth error:", error)
+                return
+            }
+            guard let uid = result?.user.uid else { return }
+
+            self?.db.collection("users").document(uid).setData([
+                "createdAt": FieldValue.serverTimestamp(),
+                "username": name,
+                "autoLockEnabled": true
+            ], merge: true) { error in
+                if let error = error {
+                    print("Firestore createUser error:", error)
+                }
             }
         }
     }
@@ -79,6 +100,7 @@ final class FirebaseLockService: ObservableObject {
     }
 
     private var role: DeviceRole = .friendA
+    private var name: String = ""
     private var roomRef: DocumentReference {
         db.collection("rooms").document(devRoomId)
     }

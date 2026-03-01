@@ -17,6 +17,7 @@ struct FamilyControlsTestView: View {
     @State private var showPicker = false
     @State private var isAuthorized = false
     @State private var role: DeviceRole = .friendA
+    @State private var name: String = ""
     @State private var hasChosenRole = false
     @StateObject private var lockService = FirebaseLockService()
 
@@ -87,7 +88,7 @@ struct FamilyControlsTestView: View {
             }
         }
     }
-
+    
     private var sendLockSection: some View {
         VStack(spacing: 8) {
             Text("Send lock to the other device (they will block on their phone)")
@@ -102,6 +103,21 @@ struct FamilyControlsTestView: View {
                     systemImage: "lock.fill"
                 )
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
+        }
+    }
+    
+    private var createUser: some View {
+        VStack(spacing: 8) {
+            Text("Create your user in the database")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Create user") {
+                lockService.createUserDb(name: "name placeholder")
+            }
+            .buttonStyle(.borderedProminent)
             .buttonStyle(.borderedProminent)
             .disabled(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
         }
