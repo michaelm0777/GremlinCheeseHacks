@@ -197,6 +197,18 @@ final class FirebaseLockService: ObservableObject {
             }
         }
     }
+    
+    func resolveChallengeById(_ challengeId: String, completion: (() -> Void)? = nil) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            let ref = self.db.collection("challenges").document(challengeId)
+            ref.setData(["status": "completed"], merge: true) { err in
+                if let err = err { print("Resolve single challenge error:", err) }
+                completion?()
+            }
+        }
+    }
 
     /// Marks all pending challenges targeting the current user as completed, and updates streakDays/lastChallengeDate.
     func resolveChallengesTargetingMe(completion: (() -> Void)? = nil) {

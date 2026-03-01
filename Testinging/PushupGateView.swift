@@ -10,8 +10,11 @@ import SwiftUI
 struct PushupGateView: View {
     let title: String
     let requiredReps: Int
-    let onComplete: () -> Void
+    let recordVideo: Bool
+    let onComplete: (_ recordedFileUrl: URL?) -> Void
     let onCancel: () -> Void
+    
+    
 
     @StateObject private var cameraManager = CameraPushupManager()
     @Environment(\.dismiss) private var dismiss
@@ -100,6 +103,10 @@ struct PushupGateView: View {
             cameraManager.exerciseMode = .pushup
             cameraManager.resetCount()
             cameraManager.startSession()
+
+            if recordVideo {
+                cameraManager.startRecording()
+            }
         }
         .onDisappear {
             cameraManager.stopSession()
@@ -107,8 +114,16 @@ struct PushupGateView: View {
         .onChange(of: cameraManager.currentCount) { _, newCount in
             if newCount >= requiredReps {
                 cameraManager.stopSession()
-                onComplete()
-                dismiss()
+
+                if recordVideo {
+                    cameraManager.stopRecording { url in
+                        onComplete(url)
+                        dismiss()
+                    }
+                } else {
+                    onComplete(nil)
+                    dismiss()
+                }
             }
         }
     }
@@ -121,7 +136,8 @@ struct PushupGateView: View {
 struct JumpingJackGateView: View {
     let title: String
     let requiredReps: Int
-    let onComplete: () -> Void
+    let recordVideo: Bool
+    let onComplete: (_ recordedFileUrl: URL?) -> Void
     let onCancel: () -> Void
 
     @StateObject private var cameraManager = CameraPushupManager()
@@ -209,6 +225,10 @@ struct JumpingJackGateView: View {
             cameraManager.exerciseMode = .jumpingJack
             cameraManager.resetCount()
             cameraManager.startSession()
+
+            if recordVideo {
+                cameraManager.startRecording()
+            }
         }
         .onDisappear {
             cameraManager.stopSession()
@@ -216,8 +236,16 @@ struct JumpingJackGateView: View {
         .onChange(of: cameraManager.currentCount) { _, newCount in
             if newCount >= requiredReps {
                 cameraManager.stopSession()
-                onComplete()
-                dismiss()
+
+                if recordVideo {
+                    cameraManager.stopRecording { url in
+                        onComplete(url)
+                        dismiss()
+                    }
+                } else {
+                    onComplete(nil)
+                    dismiss()
+                }
             }
         }
     }

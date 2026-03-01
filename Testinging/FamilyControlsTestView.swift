@@ -230,21 +230,31 @@ struct FamilyControlsTestView: View {
                 JumpingJackGateView(
                     title: title,
                     requiredReps: challenge.reps,
-                    onComplete: {
-                        lockService.createChallenge(
-                            exerciseType: exercise,
-                            reps: challenge.reps,
-                            blockDurationSec: 300
-                        )
-                        pendingSendChallenge = nil
+                    recordVideo: true,
+                    onComplete: { recordedUrl in
+                        guard let ch = lockService.activeChallenge else {
+                            lockService.resolveChallengesTargetingMe()
+                            unblockAppsLocally()
+                            showUnblockPushupGate = false
+                            return
+                        }
+
+                        lockService.resolveChallengeById(ch.id)
+                        unblockAppsLocally()
+                        showUnblockPushupGate = false
+
+                        if let url = recordedUrl {
+                            lockService.uploadProofVideo(challengeId: ch.id, fileUrl: url)
+                        }
                     },
-                    onCancel: { pendingSendChallenge = nil }
+                    onCancel: {}
                 )
             } else {
                 PushupGateView(
                     title: title,
                     requiredReps: challenge.reps,
-                    onComplete: {
+                    recordVideo: false,
+                    onComplete: { _ in
                         lockService.createChallenge(
                             exerciseType: exercise,
                             reps: challenge.reps,
@@ -295,8 +305,20 @@ struct FamilyControlsTestView: View {
                 JumpingJackGateView(
                     title: title,
                     requiredReps: reps,
-                    onComplete: {
-                        lockService.resolveChallengesTargetingMe()
+                    onComplete: { videoUrl in
+                        guard let ch = lockService.activeChallenge else {
+                            lockService.resolveChallengesTargetingMe()
+                            unblockAppsLocally()
+                            showUnblockPushupGate = false
+                            return
+                        }
+
+                        // Upload proof first (optional order), then resolve.
+                        if let videoUrl {
+                            lockService.uploadProofVideo(challengeId: ch.id, fileUrl: videoUrl)
+                        }
+
+                        lockService.resolveChallengeById(ch.id)
                         unblockAppsLocally()
                         showUnblockPushupGate = false
                     },
@@ -306,8 +328,19 @@ struct FamilyControlsTestView: View {
                 PushupGateView(
                     title: title,
                     requiredReps: reps,
-                    onComplete: {
-                        lockService.resolveChallengesTargetingMe()
+                    onComplete: { videoUrl in
+                        guard let ch = lockService.activeChallenge else {
+                            lockService.resolveChallengesTargetingMe()
+                            unblockAppsLocally()
+                            showUnblockPushupGate = false
+                            return
+                        }
+
+                        if let videoUrl {
+                            lockService.uploadProofVideo(challengeId: ch.id, fileUrl: videoUrl)
+                        }
+
+                        lockService.resolveChallengeById(ch.id)
                         unblockAppsLocally()
                         showUnblockPushupGate = false
                     },

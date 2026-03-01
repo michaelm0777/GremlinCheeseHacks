@@ -30,6 +30,8 @@ final class CameraPushupManager: NSObject, ObservableObject {
 
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private var recordingCompletion: ((URL?) -> Void)?
     private let sessionQueue = DispatchQueue(label: "pushup.capture.session", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "pushup.vision")
     private nonisolated(unsafe) var bodyPoseRequest: VNDetectHumanBodyPoseRequest!
@@ -99,6 +101,9 @@ final class CameraPushupManager: NSObject, ObservableObject {
             if self.captureSession.canAddOutput(self.videoOutput) {
                 self.captureSession.addOutput(self.videoOutput)
             }
+            if self.captureSession.canAddOutput(self.movieOutput) {
+                self.captureSession.addOutput(self.movieOutput)
+            }
             if let connection = self.videoOutput.connection(with: .video) {
                 connection.videoRotationAngle = 90
                 if connection.isVideoMirroringSupported {
@@ -142,6 +147,33 @@ final class CameraPushupManager: NSObject, ObservableObject {
     }()
 
     var previewLayer: AVCaptureVideoPreviewLayer { _previewLayer }
+    
+    func startRecording() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard !self.movieOutput.isRecording else { return }
+
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("proof_\(UUID().uuidString).mov")
+
+            try? FileManager.default.removeItem(at: url)
+
+            self.movieOutput.startRecording(to: url, recordingDelegate: self)
+        }
+    }
+
+    func stopRecording(completion: @escaping (URL?) -> Void) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+
+            if self.movieOutput.isRecording {
+                self.recordingCompletion = completion
+                self.movieOutput.stopRecording()
+            } else {
+                completion(nil)
+            }
+        }
+    }
 
 }
 
@@ -301,5 +333,22 @@ extension CameraPushupManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         if armAngle >= armOpenThreshold && legAngle >= legOpenThreshold { return .open }
         if armAngle <= armClosedThreshold && legAngle <= legClosedThreshold { return .closed }
         return .unknown
+    }
+}
+
+extension CameraPushupManager: AVCaptureFileOutputRecordingDelegate {
+    nonisolated func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        let url: URL? = (error == nil) ? outputFileURL : nil
+
+        Task { @MainActor in
+            let cb = self.recordingCompletion
+            self.recordingCompletion = nil
+            cb?(url)
+        }
     }
 }
