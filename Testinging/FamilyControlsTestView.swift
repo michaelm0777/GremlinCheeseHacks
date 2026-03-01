@@ -39,8 +39,7 @@ struct FamilyControlsTestView: View {
     @State private var challengeTargetUid: String? = nil
 
     private var currentStreakDays: Int {
-        // TODO: connect to real streak logic
-        return -1
+        lockService.currentStreakDays ?? -1
     }
 
     var body: some View {

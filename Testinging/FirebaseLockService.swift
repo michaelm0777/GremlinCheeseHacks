@@ -9,17 +9,24 @@ import FirebaseFirestore
 import FirebaseAuth
 import FirebaseStorage
 
-
 @MainActor
 final class FirebaseLockService: ObservableObject {
     private let db = Firestore.firestore()
+
+    // Challenges listener
     private var listener: ListenerRegistration?
+
+    // User profile listener (streak)
+    private var profileListener: ListenerRegistration?
 
     @Published private(set) var shouldBlockThisDevice = false
     /// When there is a pending challenge targeting this user, holds the exercise type and reps required to unblock.
     @Published private(set) var activeChallenge: (exerciseType: String, reps: Int)?
     /// Current user's UID (set when signed in). Share this with the other phone so they can send you a challenge.
     @Published private(set) var currentUserUid: String?
+
+    // NEW: exposed for UI
+    @Published var currentStreakDays: Int? = nil
 
     // MARK: - Create user (users/{uid})
 
@@ -29,7 +36,10 @@ final class FirebaseLockService: ObservableObject {
             self.db.collection("users").document(uid).setData([
                 "createdAt": FieldValue.serverTimestamp(),
                 "username": name,
-                "autoLockEnabled": true
+                "autoLockEnabled": true,
+                // NEW defaults for streak tracking
+                "streakDays": 0,
+                "lastChallengeDate": NSNull()
             ], merge: true) { error in
                 if let error = error {
                     print("Firestore createUser error:", error)
@@ -40,10 +50,10 @@ final class FirebaseLockService: ObservableObject {
         }
     }
 
-    // MARK: - Create challenge (manual toUser uid)
+    // MARK: - Create challenge (paired user)
 
     func createChallenge(
-        toUser: String,              // kept to avoid changing call sites (will be ignored)
+        toUser: String,              // kept to avoid changing call sites (ignored)
         exerciseType: String,
         reps: Int,
         blockDurationSec: Int
@@ -99,7 +109,7 @@ final class FirebaseLockService: ObservableObject {
                 }
         }
     }
-    
+
     func createPair(withOtherUid otherUid: String, completion: @escaping (Result<String, Error>) -> Void) {
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
@@ -127,14 +137,13 @@ final class FirebaseLockService: ObservableObject {
         }
     }
 
-    /// Marks all pending challenges targeting the current user as completed so the listener sees no pending and unblock is effective.
+    /// Marks all pending challenges targeting the current user as completed, and updates streakDays/lastChallengeDate.
     func resolveChallengesTargetingMe(completion: (() -> Void)? = nil) {
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
 
             let userRef = self.db.collection("users").document(myUid)
 
-            // 1) Fetch pending challenges
             self.db.collection("challenges")
                 .whereField("toUser", isEqualTo: myUid)
                 .whereField("status", isEqualTo: "pending")
@@ -146,7 +155,6 @@ final class FirebaseLockService: ObservableObject {
                         return
                     }
 
-                    // 2) Fetch user streak fields (lastChallengeDate + streak)
                     userRef.getDocument { [weak self] userSnap, userErr in
                         guard let self else { return }
                         if let userErr = userErr {
@@ -156,15 +164,14 @@ final class FirebaseLockService: ObservableObject {
                         }
 
                         let data = userSnap?.data() ?? [:]
-                        let currentStreak = data["streak"] as? Int ?? 0
+                        let currentStreak = data["streakDays"] as? Int ?? 0
                         let lastTS = data["lastChallengeDate"] as? Timestamp
                         let lastDate = lastTS?.dateValue()
 
                         let cal = Calendar.current
                         let now = Date()
-
-                        // Only increment if lastChallengeDate is exactly yesterday
                         let yesterday = cal.date(byAdding: .day, value: -1, to: now)
+
                         let shouldIncrement: Bool = {
                             guard let lastDate, let yesterday else { return false }
                             return cal.isDate(lastDate, inSameDayAs: yesterday)
@@ -172,7 +179,6 @@ final class FirebaseLockService: ObservableObject {
 
                         let newStreak = shouldIncrement ? (currentStreak + 1) : 1
 
-                        // 3) Batch: complete challenges + update user streak + lastChallengeDate
                         let batch = self.db.batch()
 
                         snapshot?.documents.forEach { doc in
@@ -181,7 +187,7 @@ final class FirebaseLockService: ObservableObject {
 
                         batch.setData([
                             "lastChallengeDate": FieldValue.serverTimestamp(),
-                            "streak": newStreak
+                            "streakDays": newStreak
                         ], forDocument: userRef, merge: true)
 
                         batch.commit { err in
@@ -214,6 +220,7 @@ final class FirebaseLockService: ObservableObject {
 
                     let docs = snapshot?.documents ?? []
                     let shouldBlock = !docs.isEmpty
+
                     var challenge: (exerciseType: String, reps: Int)?
                     if let first = docs.first, let data = first.data()["exercise"] as? [String: Any] {
                         let type = data["type"] as? String ?? "pushups"
@@ -229,7 +236,33 @@ final class FirebaseLockService: ObservableObject {
                 }
         }
     }
-    
+
+    // MARK: - Listen for my profile (streakDays)
+
+    func startListeningForMyProfile() {
+        ensureSignedIn { [weak self] uid in
+            guard let self else { return }
+            self.currentUserUid = uid
+
+            self.profileListener?.remove()
+            self.profileListener = self.db.collection("users").document(uid)
+                .addSnapshotListener { [weak self] snap, error in
+                    guard let self else { return }
+                    if let error = error {
+                        print("Profile listen error:", error)
+                        return
+                    }
+
+                    let data = snap?.data() ?? [:]
+                    let streak = data["streakDays"] as? Int ?? 0
+
+                    Task { @MainActor in
+                        self.currentStreakDays = streak
+                    }
+                }
+        }
+    }
+
     func uploadProofVideo(
         challengeId: String,
         fileUrl: URL
@@ -271,7 +304,8 @@ final class FirebaseLockService: ObservableObject {
             }
         }
     }
-    
+
+    // Optional: keep if you still use it elsewhere
     func getOrCreateStreak(completion: @escaping (Int) -> Void) {
         ensureSignedIn { [weak self] uid in
             guard let self else { return }
@@ -286,29 +320,23 @@ final class FirebaseLockService: ObservableObject {
                     return
                 }
 
-                // If user doc doesn't exist, create it with streak = 0
                 if snap?.exists == false {
                     userRef.setData([
                         "createdAt": FieldValue.serverTimestamp(),
-                        "streak": 0,
+                        "streakDays": 0,
                         "lastChallengeDate": NSNull()
                     ], merge: true) { err in
-                        if let err = err {
-                            print("Create user streak error:", err)
-                        }
+                        if let err = err { print("Create user streak error:", err) }
                         completion(0)
                     }
                     return
                 }
 
-                let streak = snap?.data()?["streak"] as? Int ?? 0
+                let streak = snap?.data()?["streakDays"] as? Int ?? 0
 
-                // If field missing, add it
-                if snap?.data()?["streak"] == nil {
-                    userRef.setData(["streak": 0], merge: true) { err in
-                        if let err = err {
-                            print("Set missing streak error:", err)
-                        }
+                if snap?.data()?["streakDays"] == nil {
+                    userRef.setData(["streakDays": 0], merge: true) { err in
+                        if let err = err { print("Set missing streakDays error:", err) }
                         completion(0)
                     }
                 } else {
@@ -321,6 +349,10 @@ final class FirebaseLockService: ObservableObject {
     func stopListening() {
         listener?.remove()
         listener = nil
+
+        profileListener?.remove()
+        profileListener = nil
+
         shouldBlockThisDevice = false
         activeChallenge = nil
     }
