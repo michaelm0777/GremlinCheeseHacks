@@ -39,40 +39,60 @@ final class FirebaseLockService: ObservableObject {
     // MARK: - Create challenge (manual toUser uid)
 
     func createChallenge(
-        toUser: String,
+        toUser: String,              // kept to avoid changing call sites (will be ignored)
         exerciseType: String,
         reps: Int,
         blockDurationSec: Int
     ) {
-        let toUserTrimmed = toUser.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !toUserTrimmed.isEmpty else { return }
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
 
-            let challengeData: [String: Any] = [
-                "fromUser": myUid,
-                "toUser": toUserTrimmed,
-                "status": "pending",
-                "createdAt": FieldValue.serverTimestamp(),
-                "blockDuration": blockDurationSec,
-                "exercise": [
-                    "type": exerciseType,
-                    "reps": reps
-                ],
-                "proof": [
-                    "uploaded": false,
-                    "videoUrl": NSNull(),
-                    "uploadedAt": NSNull()
-                ]
-            ]
+            // Find my pair (assumes exactly one pair per user)
+            self.db.collection("pairs")
+                .whereField("members", arrayContains: myUid)
+                .limit(to: 1)
+                .getDocuments { [weak self] snapshot, error in
+                    guard let self else { return }
 
-            self.db.collection("challenges").addDocument(data: challengeData) { error in
-                if let error = error {
-                    print("Create challenge error:", error)
-                } else {
-                    print("Challenge created for:", toUserTrimmed)
+                    if let error = error {
+                        print("Fetch pair error:", error)
+                        return
+                    }
+
+                    guard
+                        let pairDoc = snapshot?.documents.first,
+                        let members = pairDoc.data()["members"] as? [String],
+                        let otherUid = members.first(where: { $0 != myUid })
+                    else {
+                        print("No valid pair found for uid:", myUid)
+                        return
+                    }
+
+                    let challengeData: [String: Any] = [
+                        "fromUser": myUid,
+                        "toUser": otherUid,
+                        "status": "pending",
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "blockDuration": blockDurationSec,
+                        "exercise": [
+                            "type": exerciseType,
+                            "reps": reps
+                        ],
+                        "proof": [
+                            "uploaded": false,
+                            "videoUrl": NSNull(),
+                            "uploadedAt": NSNull()
+                        ]
+                    ]
+
+                    self.db.collection("challenges").addDocument(data: challengeData) { error in
+                        if let error = error {
+                            print("Create challenge error:", error)
+                        } else {
+                            print("Challenge created for:", otherUid)
+                        }
+                    }
                 }
-            }
         }
     }
 
