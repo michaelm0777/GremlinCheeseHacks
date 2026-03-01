@@ -1,4 +1,4 @@
-# Gremlin (Testinging)
+# Gremlin
 
 An iOS app that lets you challenge friends: send them a lock that blocks selected apps on their device until they complete a short exercise (pushups or jumping jacks), counted in real time using the camera and on-device pose detection.
 
