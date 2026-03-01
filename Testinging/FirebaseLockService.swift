@@ -131,6 +131,10 @@ final class FirebaseLockService: ObservableObject {
     func resolveChallengesTargetingMe(completion: (() -> Void)? = nil) {
         ensureSignedIn { [weak self] myUid in
             guard let self else { return }
+
+            let userRef = self.db.collection("users").document(myUid)
+
+            // 1) Fetch pending challenges
             self.db.collection("challenges")
                 .whereField("toUser", isEqualTo: myUid)
                 .whereField("status", isEqualTo: "pending")
@@ -141,13 +145,49 @@ final class FirebaseLockService: ObservableObject {
                         completion?()
                         return
                     }
-                    let batch = self.db.batch()
-                    snapshot?.documents.forEach { doc in
-                        batch.updateData(["status": "completed"], forDocument: doc.reference)
-                    }
-                    batch.commit { err in
-                        if let err = err { print("Batch commit error:", err) }
-                        completion?()
+
+                    // 2) Fetch user streak fields (lastChallengeDate + streak)
+                    userRef.getDocument { [weak self] userSnap, userErr in
+                        guard let self else { return }
+                        if let userErr = userErr {
+                            print("User fetch error:", userErr)
+                            completion?()
+                            return
+                        }
+
+                        let data = userSnap?.data() ?? [:]
+                        let currentStreak = data["streak"] as? Int ?? 0
+                        let lastTS = data["lastChallengeDate"] as? Timestamp
+                        let lastDate = lastTS?.dateValue()
+
+                        let cal = Calendar.current
+                        let now = Date()
+
+                        // Only increment if lastChallengeDate is exactly yesterday
+                        let yesterday = cal.date(byAdding: .day, value: -1, to: now)
+                        let shouldIncrement: Bool = {
+                            guard let lastDate, let yesterday else { return false }
+                            return cal.isDate(lastDate, inSameDayAs: yesterday)
+                        }()
+
+                        let newStreak = shouldIncrement ? (currentStreak + 1) : 1
+
+                        // 3) Batch: complete challenges + update user streak + lastChallengeDate
+                        let batch = self.db.batch()
+
+                        snapshot?.documents.forEach { doc in
+                            batch.updateData(["status": "completed"], forDocument: doc.reference)
+                        }
+
+                        batch.setData([
+                            "lastChallengeDate": FieldValue.serverTimestamp(),
+                            "streak": newStreak
+                        ], forDocument: userRef, merge: true)
+
+                        batch.commit { err in
+                            if let err = err { print("Batch commit error:", err) }
+                            completion?()
+                        }
                     }
                 }
         }
@@ -227,6 +267,52 @@ final class FirebaseLockService: ObservableObject {
                             print("Proof video saved for challenge:", challengeId)
                         }
                     }
+                }
+            }
+        }
+    }
+    
+    func getOrCreateStreak(completion: @escaping (Int) -> Void) {
+        ensureSignedIn { [weak self] uid in
+            guard let self else { return }
+
+            let userRef = self.db.collection("users").document(uid)
+
+            userRef.getDocument { [weak self] snap, error in
+                guard let self else { return }
+                if let error = error {
+                    print("Get streak error:", error)
+                    completion(0)
+                    return
+                }
+
+                // If user doc doesn't exist, create it with streak = 0
+                if snap?.exists == false {
+                    userRef.setData([
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "streak": 0,
+                        "lastChallengeDate": NSNull()
+                    ], merge: true) { err in
+                        if let err = err {
+                            print("Create user streak error:", err)
+                        }
+                        completion(0)
+                    }
+                    return
+                }
+
+                let streak = snap?.data()?["streak"] as? Int ?? 0
+
+                // If field missing, add it
+                if snap?.data()?["streak"] == nil {
+                    userRef.setData(["streak": 0], merge: true) { err in
+                        if let err = err {
+                            print("Set missing streak error:", err)
+                        }
+                        completion(0)
+                    }
+                } else {
+                    completion(streak)
                 }
             }
         }
