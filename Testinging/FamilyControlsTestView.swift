@@ -362,25 +362,6 @@ struct FamilyControlsTestView: View {
         managedSettingsStore.shield.applications = []
         managedSettingsStore.shield.applicationCategories = .none
     }
-    
-    private func resetLocalAppData() {
-        // 1) Unblock locally
-        unblockAppsLocally()
-
-        // 2) Clear AppStorage-backed flags
-        UserDefaults.standard.removeObject(forKey: "gremlin_username")
-        UserDefaults.standard.removeObject(forKey: "didOnboard_gremlin")
-
-        // 3) Reset in-memory UI state
-        selection = FamilyActivitySelection()
-        isAuthorized = false
-        activeSheet = nil
-        pendingSendChallenge = nil
-        showMyQr = false
-        showScanner = false
-        pairingStatusText = nil
-        showUnblockPushupGate = false
-    }
 
     // MARK: - Sheets
     private enum ActiveSheet: Identifiable {
@@ -1485,7 +1466,6 @@ private struct SettingsView: View {
     let onRequestAuthorization: () -> Void
     let onPickApps: () -> Void
     let onCreateUser: () -> Void
-    let onResetAppData: () -> Void
 
     let onUnblockGate: () -> Void
     let hasActiveChallenge: Bool
@@ -1587,18 +1567,6 @@ private struct SettingsView: View {
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .stroke(Color.white.opacity(0.10), lineWidth: 1)
                                 )
-                                
-                                Button(role: .destructive) {
-                                    onResetAppData()
-                                } label: {
-                                    Text("Reset app data (local)")
-                                }
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(Color.red.opacity(0.75), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                
                             }
                         }
 
