@@ -175,17 +175,18 @@ struct FamilyControlsTestView: View {
                     onCreateUser: {
                         lockService.createUserDb(name: "name placeholder")
                     },
+                    onResetAppData: {
+                        resetLocalAppData()
+                        didOnboard = false
+                        gremlinUsername = ""
+                    },
                     onUnblockGate: {
                         activeSheet = nil
                         DispatchQueue.main.async {
                             showUnblockPushupGate = true
                         }
                     },
-                    onResetAppData: {
-                        resetLocalAppData()
-                        didOnboard = false
-                        gremlinUsername = ""
-                    },
+                    
                     hasActiveChallenge: lockService.shouldBlockThisDevice
                 )
             }
