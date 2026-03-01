@@ -21,7 +21,15 @@ final class FirebaseLockService: ObservableObject {
 
     @Published private(set) var shouldBlockThisDevice = false
     /// When there is a pending challenge targeting this user, holds the exercise type and reps required to unblock.
-    @Published private(set) var activeChallenge: (exerciseType: String, reps: Int)?
+    struct ActiveChallenge {
+        let id: String
+        let fromUser: String
+        let exerciseType: String
+        let reps: Int
+        let inChallenge: Bool
+    }
+
+    @Published private(set) var activeChallenge: ActiveChallenge?
     /// Current user's UID (set when signed in). Share this with the other phone so they can send you a challenge.
     @Published private(set) var currentUserUid: String?
 
@@ -87,6 +95,7 @@ final class FirebaseLockService: ObservableObject {
                         "status": "pending",
                         "createdAt": FieldValue.serverTimestamp(),
                         "blockDuration": blockDurationSec,
+                        "inChallenge": false,
                         "exercise": [
                             "type": exerciseType,
                             "reps": reps
@@ -106,6 +115,44 @@ final class FirebaseLockService: ObservableObject {
                         }
                     }
                 }
+        }
+    }
+    
+    func createChallenge(
+        toUser otherUid: String,
+        exerciseType: String,
+        reps: Int,
+        blockDurationSec: Int,
+        inChallenge: Bool
+    ) {
+        ensureSignedIn { [weak self] myUid in
+            guard let self else { return }
+
+            let challengeData: [String: Any] = [
+                "fromUser": myUid,
+                "toUser": otherUid,
+                "status": "pending",
+                "createdAt": FieldValue.serverTimestamp(),
+                "blockDuration": blockDurationSec,
+                "inChallenge": inChallenge,
+                "exercise": [
+                    "type": exerciseType,
+                    "reps": reps
+                ],
+                "proof": [
+                    "uploaded": false,
+                    "videoUrl": NSNull(),
+                    "uploadedAt": NSNull()
+                ]
+            ]
+
+            self.db.collection("challenges").addDocument(data: challengeData) { error in
+                if let error = error {
+                    print("Create challenge (direct) error:", error)
+                } else {
+                    print("Challenge created for:", otherUid)
+                }
+            }
         }
     }
 
@@ -220,11 +267,24 @@ final class FirebaseLockService: ObservableObject {
                     let docs = snapshot?.documents ?? []
                     let shouldBlock = !docs.isEmpty
 
-                    var challenge: (exerciseType: String, reps: Int)?
-                    if let first = docs.first, let data = first.data()["exercise"] as? [String: Any] {
-                        let type = data["type"] as? String ?? "pushups"
-                        let reps = data["reps"] as? Int ?? 3
-                        challenge = (type, reps)
+                    var challenge: ActiveChallenge?
+                    if let first = docs.first {
+                        let docData = first.data()
+                        let fromUser = docData["fromUser"] as? String ?? ""
+                        let inChallenge = docData["inChallenge"] as? Bool ?? false
+
+                        if let ex = docData["exercise"] as? [String: Any] {
+                            let type = ex["type"] as? String ?? "pushups"
+                            let reps = ex["reps"] as? Int ?? 3
+
+                            challenge = ActiveChallenge(
+                                id: first.documentID,
+                                fromUser: fromUser,
+                                exerciseType: type,
+                                reps: reps,
+                                inChallenge: inChallenge
+                            )
+                        }
                     }
 
                     Task { @MainActor in

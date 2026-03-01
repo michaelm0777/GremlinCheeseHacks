@@ -36,6 +36,8 @@ struct FamilyControlsTestView: View {
     @State private var selectedExerciseType: ChallengeExercise = .pushups
     @State private var selectedRepsPreset: Int? = 25
     @State private var customRepsText: String = "25"
+    
+    @State private var showReceiverDecision = false
 
     private var currentStreakDays: Int {
         lockService.currentStreakDays ?? -1
@@ -220,6 +222,30 @@ struct FamilyControlsTestView: View {
                 )
             }
         }
+        
+        .fullScreenCover(isPresented: $showReceiverDecision) {
+            ReceiverChallengeFlowView(
+                challenge: lockService.activeChallenge,
+                onResolveOnly: {
+                    lockService.resolveChallengesTargetingMe()
+                    unblockAppsLocally()
+                    showReceiverDecision = false
+                },
+                onResolveAndSendBack: { toUser, exerciseType, repsToSend, inChallenge in
+                    lockService.resolveChallengesTargetingMe()
+                    unblockAppsLocally()
+                    lockService.createChallenge(
+                        toUser: toUser,
+                        exerciseType: exerciseType,
+                        reps: repsToSend,
+                        blockDurationSec: 300,
+                        inChallenge: inChallenge
+                    )
+                    showReceiverDecision = false
+                }
+            )
+        }
+        
         // Receiver unblock gate: do the same exercise/reps as the active challenge from Firebase
         .fullScreenCover(isPresented: $showUnblockPushupGate) {
             let challenge = lockService.activeChallenge
@@ -252,14 +278,21 @@ struct FamilyControlsTestView: View {
                 )
             }
         }
+        
         .onAppear {
             lockService.startListeningForChallenges { shouldBlock in
                 if shouldBlock {
                     blockSelectedApps()
+                    DispatchQueue.main.async {
+                        showReceiverDecision = true
+                    }
                 } else {
                     unblockAppsLocally()
+                    DispatchQueue.main.async {
+                        showReceiverDecision = false
+                    }
                 }
-                
+
                 lockService.startListeningForMyProfile()
             }
         }
@@ -1510,6 +1543,169 @@ private struct QrScannerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
+
+private struct ReceiverChallengeFlowView: View {
+    let challenge: FirebaseLockService.ActiveChallenge?
+    let onResolveOnly: () -> Void
+    let onResolveAndSendBack: (_ toUser: String, _ exerciseType: String, _ repsToSend: Int, _ inChallenge: Bool) -> Void
+
+    @State private var selectedAction: Action? = nil
+
+    private enum Action {
+        case complete
+        case startBig
+        case continueChain
+        case forfeit
+    }
+
+    var body: some View {
+        ZStack {
+            GremlinTheme.background.ignoresSafeArea()
+
+            if let ch = challenge {
+                if selectedAction == nil {
+                    decisionUI(for: ch)
+                } else {
+                    gateUI(for: ch, action: selectedAction!)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Text("No active challenge.")
+                        .foregroundStyle(.white)
+                    Button("Close") {
+                        onResolveOnly()
+                    }
+                    .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    private func decisionUI(for ch: FirebaseLockService.ActiveChallenge) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            Text("Challenge received")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(.white)
+
+            Text("\(ch.reps) \(ch.exerciseType)")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(GremlinTheme.textSecondary)
+
+            Spacer()
+
+            if ch.inChallenge {
+                Button("continue challenge") {
+                    selectedAction = .continueChain
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(GremlinTheme.accentGreen, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+
+                Button(role: .destructive) {
+                    selectedAction = .forfeit
+                } label: {
+                    Text("forfeit challenge")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.red.opacity(0.75), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                }
+            } else {
+                Button("complete") {
+                    selectedAction = .complete
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(GremlinTheme.accentGreen, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+
+                Button("start big challenge (+5 reps)") {
+                    selectedAction = .startBig
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+            }
+
+            Spacer(minLength: 18)
+        }
+    }
+
+    private func gateUI(for ch: FirebaseLockService.ActiveChallenge, action: Action) -> some View {
+        let exercise = ch.exerciseType
+        let incomingR = ch.reps
+
+        // Required reps for ME (receiver)
+        let myRequired: Int = {
+            switch action {
+            case .startBig:
+                return incomingR + 5
+            case .complete, .continueChain, .forfeit:
+                return incomingR
+            }
+        }()
+
+        // Reps I send back (if I continue/escalate)
+        let sendBackReps: Int? = {
+            switch action {
+            case .startBig:
+                return (incomingR + 5) + 5   // R+10
+            case .continueChain:
+                return incomingR + 5         // R+5
+            case .complete, .forfeit:
+                return nil
+            }
+        }()
+
+        let title = "Do \(myRequired) \(exercise == "jumping jacks" ? "jumping jacks" : "pushups")"
+
+        return Group {
+            if exercise == "jumping jacks" {
+                JumpingJackGateView(
+                    title: title,
+                    requiredReps: myRequired,
+                    onComplete: {
+                        if let back = sendBackReps, !ch.fromUser.isEmpty {
+                            onResolveAndSendBack(ch.fromUser, exercise, back, true)
+                        } else {
+                            onResolveOnly()
+                        }
+                    },
+                    onCancel: {}
+                )
+            } else {
+                PushupGateView(
+                    title: title,
+                    requiredReps: myRequired,
+                    onComplete: {
+                        if let back = sendBackReps, !ch.fromUser.isEmpty {
+                            onResolveAndSendBack(ch.fromUser, exercise, back, true)
+                        } else {
+                            onResolveOnly()
+                        }
+                    },
+                    onCancel: {}
+                )
+            }
+        }
+    }
+}
+
 
 private final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var onScanned: ((String) -> Void)?
