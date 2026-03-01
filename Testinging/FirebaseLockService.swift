@@ -53,7 +53,6 @@ final class FirebaseLockService: ObservableObject {
     // MARK: - Create challenge (paired user)
 
     func createChallenge(
-        toUser: String,              // kept to avoid changing call sites (ignored)
         exerciseType: String,
         reps: Int,
         blockDurationSec: Int

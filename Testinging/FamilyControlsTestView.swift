@@ -36,7 +36,6 @@ struct FamilyControlsTestView: View {
     @State private var selectedExerciseType: ChallengeExercise = .pushups
     @State private var selectedRepsPreset: Int? = 25
     @State private var customRepsText: String = "25"
-    @State private var challengeTargetUid: String? = nil
 
     private var currentStreakDays: Int {
         lockService.currentStreakDays ?? -1
@@ -114,13 +113,11 @@ struct FamilyControlsTestView: View {
                     )
             case .createChallenge:
                 CreateChallengeView(
-                    toUserUid: $toUserUid,
                     selectedExerciseType: $selectedExerciseType,
                     selectedRepsPreset: $selectedRepsPreset,
                     customRepsText: $customRepsText,
                     onClose: { activeSheet = nil },
-                    onSend: { targetUid, exerciseType, reps in
-                        challengeTargetUid = targetUid
+                    onSend: { exerciseType, reps in
                         selectedExerciseType = exerciseType
                         customRepsText = "\(reps)"
                         selectedRepsPreset = reps
@@ -128,7 +125,6 @@ struct FamilyControlsTestView: View {
                         activeSheet = nil
                         DispatchQueue.main.async {
                             pendingSendChallenge = PendingSendChallenge(
-                                targetUid: targetUid,
                                 reps: reps,
                                 exerciseType: exerciseType
                             )
@@ -200,7 +196,6 @@ struct FamilyControlsTestView: View {
                     requiredReps: challenge.reps,
                     onComplete: {
                         lockService.createChallenge(
-                            toUser: challenge.targetUid,
                             exerciseType: exercise,
                             reps: challenge.reps,
                             blockDurationSec: 300
@@ -215,7 +210,6 @@ struct FamilyControlsTestView: View {
                     requiredReps: challenge.reps,
                     onComplete: {
                         lockService.createChallenge(
-                            toUser: challenge.targetUid,
                             exerciseType: exercise,
                             reps: challenge.reps,
                             blockDurationSec: 300
@@ -1046,7 +1040,6 @@ private struct AddFriendView: View {
 /// Payload for the send-challenge gate. Item-based fullScreenCover uses this so the first send gets the correct reps/exercise.
 private struct PendingSendChallenge: Identifiable {
     let id = UUID()
-    let targetUid: String
     let reps: Int
     let exerciseType: ChallengeExercise
 }
@@ -1073,14 +1066,12 @@ private enum ChallengeExercise: String, CaseIterable, Identifiable {
 }
 
 private struct CreateChallengeView: View {
-    @Binding var toUserUid: String
-
     @Binding var selectedExerciseType: ChallengeExercise
     @Binding var selectedRepsPreset: Int?
     @Binding var customRepsText: String
 
     let onClose: () -> Void
-    let onSend: (_ targetUid: String, _ exerciseType: ChallengeExercise, _ reps: Int) -> Void
+    let onSend: (_ exerciseType: ChallengeExercise, _ reps: Int) -> Void
 
     @FocusState private var repsFieldFocused: Bool
 
@@ -1095,26 +1086,6 @@ private struct CreateChallengeView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Target UID (not visible in figma, but needed to keep existing functionality)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("TARGET UID")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(GremlinTheme.textSecondary)
-                                .tracking(1.0)
-
-                            TextField("Other phone's UID", text: $toUserUid)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .padding(14)
-                                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                                )
-                        }
-
                         Text("PICK EXERCISE")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(GremlinTheme.textSecondary)
@@ -1225,9 +1196,7 @@ private struct CreateChallengeView: View {
                         .padding(.top, 8)
 
                         Button(action: {
-                            let trimmed = toUserUid.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return }
-                            onSend(trimmed, selectedExerciseType, resolvedReps)
+                            onSend(selectedExerciseType, resolvedReps)
                         }) {
                             Text("send challenge 🔥")
                                 .font(.system(size: 18, weight: .bold))
@@ -1238,8 +1207,6 @@ private struct CreateChallengeView: View {
                         }
                         .padding(.top, 6)
                         .padding(.bottom, 24)
-                        .disabled(toUserUid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .opacity(toUserUid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 6)
@@ -1616,7 +1583,6 @@ struct FamilyControlsTestView: View {
     @State private var showPicker = false
     @State private var isAuthorized = false
 
-    @State private var toUserUid: String = ""
     @State private var showBlockPushupGate = false
     @State private var showUnblockPushupGate = false
     @State private var copiedUidFeedback = false
@@ -1699,16 +1665,10 @@ struct FamilyControlsTestView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    TextField("Other phone's UID", text: $toUserUid)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .textFieldStyle(.roundedBorder)
-
                     Button("Send Challenge (3 pushups to send → locks their apps)") {
                         showBlockPushupGate = true
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(toUserUid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                     Text("The other phone must have opened this app, authorized, and picked apps to control first, or nothing will be blocked.")
                         .font(.caption)
@@ -1787,8 +1747,6 @@ struct FamilyControlsTestView: View {
                     switch result {
                     case .success(let pairId):
                         pairingStatusText = "Paired. pairId: \(pairId)"
-                        // Optional: also fill the text field so you can test challenges immediately.
-                        toUserUid = otherUid
                     case .failure(let error):
                         pairingStatusText = "Pair failed: \(error.localizedDescription)"
                     }
@@ -1802,7 +1760,6 @@ struct FamilyControlsTestView: View {
                 requiredReps: 3,
                 onComplete: {
                     lockService.createChallenge(
-                        toUser: toUserUid,
                         exerciseType: "pushups",
                         reps: 3,
                         blockDurationSec: 300
