@@ -242,6 +242,9 @@ struct FamilyControlsTestView: View {
                         inChallenge: inChallenge
                     )
                     showReceiverDecision = false
+                },
+                onForfeitAwardPoint: { winnerUid in
+                    lockService.incrementChallengeScore(for: winnerUid)
                 }
             )
         }
@@ -1548,7 +1551,8 @@ private struct ReceiverChallengeFlowView: View {
     let challenge: FirebaseLockService.ActiveChallenge?
     let onResolveOnly: () -> Void
     let onResolveAndSendBack: (_ toUser: String, _ exerciseType: String, _ repsToSend: Int, _ inChallenge: Bool) -> Void
-
+    let onForfeitAwardPoint: (_ winnerUid: String) -> Void
+    
     @State private var selectedAction: Action? = nil
 
     private enum Action {
@@ -1682,6 +1686,14 @@ private struct ReceiverChallengeFlowView: View {
                     title: title,
                     requiredReps: myRequired,
                     onComplete: {
+                        if action == .forfeit {
+                            if !ch.fromUser.isEmpty {
+                                onForfeitAwardPoint(ch.fromUser)
+                            }
+                            onResolveOnly()
+                            return
+                        }
+
                         if let back = sendBackReps, !ch.fromUser.isEmpty {
                             onResolveAndSendBack(ch.fromUser, exercise, back, true)
                         } else {
@@ -1695,6 +1707,14 @@ private struct ReceiverChallengeFlowView: View {
                     title: title,
                     requiredReps: myRequired,
                     onComplete: {
+                        if action == .forfeit {
+                            if !ch.fromUser.isEmpty {
+                                onForfeitAwardPoint(ch.fromUser)
+                            }
+                            onResolveOnly()
+                            return
+                        }
+
                         if let back = sendBackReps, !ch.fromUser.isEmpty {
                             onResolveAndSendBack(ch.fromUser, exercise, back, true)
                         } else {

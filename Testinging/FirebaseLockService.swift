@@ -244,6 +244,24 @@ final class FirebaseLockService: ObservableObject {
                 }
         }
     }
+    
+    /// Increments a hidden score field on a user's doc.
+    /// If the field doesn't exist yet, Firestore treats it as 0 and sets it to 1.
+    func incrementChallengeScore(for userUid: String) {
+        guard !userUid.isEmpty else { return }
+
+        let userRef = db.collection("users").document(userUid)
+
+        userRef.setData([
+            "challengeScore": FieldValue.increment(Int64(1))
+        ], merge: true) { error in
+            if let error = error {
+                print("Increment challengeScore error:", error)
+            } else {
+                print("challengeScore incremented for:", userUid)
+            }
+        }
+    }
 
     // MARK: - Listen for challenges targeting this user
 
