@@ -31,7 +31,9 @@ final class CameraPushupManager: NSObject, ObservableObject {
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
-    private var recordingCompletion: ((URL?) -> Void)?
+    
+    private nonisolated(unsafe) var recordingCompletion: ((URL?) -> Void)?
+    private nonisolated(unsafe) var lastRecordedURL: URL?
     private let sessionQueue = DispatchQueue(label: "pushup.capture.session", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "pushup.vision")
     private nonisolated(unsafe) var bodyPoseRequest: VNDetectHumanBodyPoseRequest!
@@ -48,6 +50,39 @@ final class CameraPushupManager: NSObject, ObservableObject {
     override init() {
         super.init()
         bodyPoseRequest = VNDetectHumanBodyPoseRequest()
+    }
+    
+    func startRecording() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.captureSession.isRunning else { return }
+            guard !self.movieOutput.isRecording else { return }
+
+            let filename = "proof-\(UUID().uuidString).mp4"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+            // clean if exists
+            try? FileManager.default.removeItem(at: url)
+
+            self.lastRecordedURL = nil
+            self.movieOutput.startRecording(to: url, recordingDelegate: self)
+        }
+    }
+
+    func stopRecording(completion: @escaping (URL?) -> Void) {
+        sessionQueue.async { [weak self] in
+            guard let self else {
+                completion(nil)
+                return
+            }
+
+            if self.movieOutput.isRecording {
+                self.recordingCompletion = completion
+                self.movieOutput.stopRecording()
+            } else {
+                completion(self.lastRecordedURL)
+            }
+        }
     }
 
     /// Start capture session. Requests camera permission on main first, then configures on a background queue so main never blocks.
@@ -96,6 +131,14 @@ final class CameraPushupManager: NSObject, ObservableObject {
             if self.captureSession.canAddInput(input) {
                 self.captureSession.addInput(input)
             }
+            
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
+               self.captureSession.canAddInput(audioInput) {
+                self.captureSession.addInput(audioInput)
+            }
+            
+            
             self.videoOutput.setSampleBufferDelegate(self, queue: self.processingQueue)
             self.videoOutput.alwaysDiscardsLateVideoFrames = true
             if self.captureSession.canAddOutput(self.videoOutput) {
@@ -110,6 +153,20 @@ final class CameraPushupManager: NSObject, ObservableObject {
                     connection.isVideoMirrored = true
                 }
             }
+            
+            // ADD: movie output for recording
+            if self.captureSession.canAddOutput(self.movieOutput) {
+                self.captureSession.addOutput(self.movieOutput)
+            }
+            
+            // ALSO mirror + rotate the movie output connection
+            if let movieConn = self.movieOutput.connection(with: .video) {
+                movieConn.videoRotationAngle = 90
+                if movieConn.isVideoMirroringSupported {
+                    movieConn.isVideoMirrored = true
+                }
+            }
+            
             self.captureSession.commitConfiguration()
             self.captureSession.startRunning()
         }
@@ -118,6 +175,11 @@ final class CameraPushupManager: NSObject, ObservableObject {
     func stopSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
+
             self.captureSession.stopRunning()
             Task { @MainActor in
                 self.isSessionRunning = false
@@ -147,33 +209,6 @@ final class CameraPushupManager: NSObject, ObservableObject {
     }()
 
     var previewLayer: AVCaptureVideoPreviewLayer { _previewLayer }
-    
-    func startRecording() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            guard !self.movieOutput.isRecording else { return }
-
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("proof_\(UUID().uuidString).mov")
-
-            try? FileManager.default.removeItem(at: url)
-
-            self.movieOutput.startRecording(to: url, recordingDelegate: self)
-        }
-    }
-
-    func stopRecording(completion: @escaping (URL?) -> Void) {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-
-            if self.movieOutput.isRecording {
-                self.recordingCompletion = completion
-                self.movieOutput.stopRecording()
-            } else {
-                completion(nil)
-            }
-        }
-    }
 
 }
 
@@ -337,18 +372,22 @@ extension CameraPushupManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 }
 
 extension CameraPushupManager: AVCaptureFileOutputRecordingDelegate {
-    nonisolated func fileOutput(
-        _ output: AVCaptureFileOutput,
-        didFinishRecordingTo outputFileURL: URL,
-        from connections: [AVCaptureConnection],
-        error: Error?
-    ) {
-        let url: URL? = (error == nil) ? outputFileURL : nil
+    nonisolated func fileOutput(_ output: AVCaptureFileOutput,
+                                didStartRecordingTo fileURL: URL,
+                                from connections: [AVCaptureConnection]) {
+        // no-op
+    }
 
-        Task { @MainActor in
-            let cb = self.recordingCompletion
+    nonisolated func fileOutput(_ output: AVCaptureFileOutput,
+                                didFinishRecordingTo outputFileURL: URL,
+                                from connections: [AVCaptureConnection],
+                                error: Error?) {
+        let okURL: URL? = (error == nil) ? outputFileURL : nil
+        self.lastRecordedURL = okURL
+
+        if let completion = self.recordingCompletion {
             self.recordingCompletion = nil
-            cb?(url)
+            completion(okURL)
         }
     }
 }

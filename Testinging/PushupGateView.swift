@@ -5,23 +5,24 @@
 
 import SwiftUI
 
+// MARK: - Pushup gate
+
 /// Full-screen pushup gate: user must complete `requiredReps` pushups before `onComplete` is called.
-/// Same camera + pose overlay UI as PushupDetector. Use for "do 3 pushups to block" or "do 3 pushups to unblock".
+/// If `recordVideo == true`, it records proof and returns the local file URL.
 struct PushupGateView: View {
     let title: String
     let requiredReps: Int
     let recordVideo: Bool
     let onComplete: (_ recordedFileUrl: URL?) -> Void
     let onCancel: () -> Void
-    
-    
 
     @StateObject private var cameraManager = CameraPushupManager()
     @Environment(\.dismiss) private var dismiss
 
+    @State private var didFinish = false
+
     var body: some View {
         ZStack {
-            // Only show camera preview after session is running to avoid accessing session/layer during config (prevents freeze/crash).
             if cameraManager.isSessionRunning {
                 CameraPreviewView(previewLayer: cameraManager.previewLayer)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -33,15 +34,15 @@ struct PushupGateView: View {
                     jumpingJackPhase: cameraManager.currentJumpingJackPhase,
                     posePoints: cameraManager.posePoints
                 )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
             } else {
-                Color.black
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(.white)
                     .scaleEffect(1.2)
+
                 if cameraManager.errorMessage == nil {
                     Text("Starting camera…")
                         .font(.subheadline)
@@ -64,12 +65,12 @@ struct PushupGateView: View {
                     .font(.system(size: 72, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+
                 Text("pushups")
                     .font(.title2.weight(.medium))
                     .foregroundStyle(.white.opacity(0.9))
 
-                Spacer()
-                    .frame(height: 48)
+                Spacer().frame(height: 48)
 
                 HStack(spacing: 24) {
                     Button("Cancel") {
@@ -100,6 +101,7 @@ struct PushupGateView: View {
             }
         }
         .onAppear {
+            didFinish = false
             cameraManager.exerciseMode = .pushup
             cameraManager.resetCount()
             cameraManager.startSession()
@@ -112,15 +114,19 @@ struct PushupGateView: View {
             cameraManager.stopSession()
         }
         .onChange(of: cameraManager.currentCount) { _, newCount in
+            guard !didFinish else { return }
             if newCount >= requiredReps {
-                cameraManager.stopSession()
+                didFinish = true
 
                 if recordVideo {
+                    // Stop recording first, then stop session to avoid cutting off the file finalization.
                     cameraManager.stopRecording { url in
+                        cameraManager.stopSession()
                         onComplete(url)
                         dismiss()
                     }
                 } else {
+                    cameraManager.stopSession()
                     onComplete(nil)
                     dismiss()
                 }
@@ -132,7 +138,7 @@ struct PushupGateView: View {
 // MARK: - Jumping jack gate
 
 /// Full-screen jumping jack gate: user must complete `requiredReps` jumping jacks before `onComplete` is called.
-/// Uses the same CameraPushupManager with exerciseMode = .jumpingJack (arm/leg spread detection).
+/// If `recordVideo == true`, it records proof and returns the local file URL.
 struct JumpingJackGateView: View {
     let title: String
     let requiredReps: Int
@@ -143,27 +149,30 @@ struct JumpingJackGateView: View {
     @StateObject private var cameraManager = CameraPushupManager()
     @Environment(\.dismiss) private var dismiss
 
+    @State private var didFinish = false
+
     var body: some View {
         ZStack {
             if cameraManager.isSessionRunning {
                 CameraPreviewView(previewLayer: cameraManager.previewLayer)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
+
                 PoseOverlayView(
                     mode: cameraManager.exerciseMode,
                     pushupPhase: cameraManager.currentPushupPhase,
                     jumpingJackPhase: cameraManager.currentJumpingJackPhase,
                     posePoints: cameraManager.posePoints
                 )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
             } else {
-                Color.black
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(.white)
                     .scaleEffect(1.2)
+
                 if cameraManager.errorMessage == nil {
                     Text("Starting camera…")
                         .font(.subheadline)
@@ -186,12 +195,12 @@ struct JumpingJackGateView: View {
                     .font(.system(size: 72, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+
                 Text("jumping jacks")
                     .font(.title2.weight(.medium))
                     .foregroundStyle(.white.opacity(0.9))
 
-                Spacer()
-                    .frame(height: 48)
+                Spacer().frame(height: 48)
 
                 HStack(spacing: 24) {
                     Button("Cancel") {
@@ -222,6 +231,7 @@ struct JumpingJackGateView: View {
             }
         }
         .onAppear {
+            didFinish = false
             cameraManager.exerciseMode = .jumpingJack
             cameraManager.resetCount()
             cameraManager.startSession()
@@ -234,15 +244,19 @@ struct JumpingJackGateView: View {
             cameraManager.stopSession()
         }
         .onChange(of: cameraManager.currentCount) { _, newCount in
+            guard !didFinish else { return }
             if newCount >= requiredReps {
-                cameraManager.stopSession()
+                didFinish = true
 
                 if recordVideo {
+                    // Stop recording first, then stop session to avoid cutting off the file finalization.
                     cameraManager.stopRecording { url in
+                        cameraManager.stopSession()
                         onComplete(url)
                         dismiss()
                     }
                 } else {
+                    cameraManager.stopSession()
                     onComplete(nil)
                     dismiss()
                 }
