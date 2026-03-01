@@ -49,12 +49,14 @@ struct FamilyControlsTestView: View {
             ZStack {
                 GremlinTheme.background.ignoresSafeArea()
 
-                if !didOnboard {
+                if gremlinUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     OnboardingView(
                         name: $gremlinUsername,
                         onContinue: { enteredName in
+                            gremlinUsername = enteredName
                             lockService.createUserDb(name: enteredName)
                             didOnboard = true
+                            
                         }
                     )
                 } else {
