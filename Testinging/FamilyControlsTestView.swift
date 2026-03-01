@@ -254,6 +254,8 @@ struct FamilyControlsTestView: View {
                 } else {
                     unblockAppsLocally()
                 }
+                
+                lockService.startListeningForMyProfile()
             }
         }
         .onDisappear {
