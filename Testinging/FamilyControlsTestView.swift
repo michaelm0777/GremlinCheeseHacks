@@ -86,20 +86,26 @@ struct FamilyControlsTestView: View {
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .friends:
+                let realFriends: [FriendsView.Friend] = lockService.friends.map { fs in
+                    FriendsView.Friend(
+                        initials: initialsFromName(fs.username),
+                        name: fs.username,
+                        statusDot: .green, // dummy for now
+                        streakDays: fs.streakDays,
+                        bigWins: fs.bigWins,
+                        avatarGradient: avatarGradient(for: fs.uid),
+                        uid: fs.uid
+                    )
+                }
+
                 FriendsView(
-                    friends:
-                        lockService.friends.map { fs in
-                            FriendsView.Friend(
-                                initials: initialsFromName(fs.username),
-                                name: fs.username,
-                                statusDot: .green, // still dummy for now
-                                streakDays: fs.streakDays,
-                                bigWins: fs.bigWins,
-                                avatarGradient: avatarGradient(for: fs.uid),
-                                uid: fs.uid
-                            )
-                        }
-                        + FriendsView.placeholderFriends,
+                    friends: realFriends + FriendsView.placeholderFriends,
+                    onClose: { activeSheet = nil },
+                    onAdd: { activeSheet = .addFriend },
+                    onChallengeFriend: { friendUid in
+                        toUserUid = friendUid
+                        activeSheet = .createChallenge
+                    }
                 )
             case .addFriend:
                 AddFriendView(
