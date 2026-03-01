@@ -40,15 +40,6 @@ struct PoseOverlayView: View {
         }
     }
 
-    private var phaseLabel: String {
-        switch mode {
-        case .pushup:
-            return (pushupPhase == .unknown && posePoints != nil) ? "In between" : pushupPhase.rawValue
-        case .jumpingJack:
-            return (jumpingJackPhase == .unknown && posePoints != nil) ? "In between" : jumpingJackPhase.rawValue
-        }
-    }
-
     private var skeletonColor: Color {
         switch mode {
         case .pushup: return .green
@@ -82,14 +73,6 @@ struct PoseOverlayView: View {
                         }
                     }
                 }
-
-                Text(phaseLabel)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.black.opacity(0.6), in: Capsule())
-                    .padding(.top, 12)
             }
             .frame(width: size.width, height: size.height)
         }

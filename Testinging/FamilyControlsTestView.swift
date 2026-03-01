@@ -17,7 +17,6 @@ struct FamilyControlsTestView: View {
     @State private var isAuthorized = false
 
     @State private var toUserUid: String = ""
-    @State private var showBlockPushupGate = false
     @State private var showUnblockPushupGate = false
     @State private var copiedUidFeedback = false
 
@@ -33,6 +32,7 @@ struct FamilyControlsTestView: View {
     @State private var activeSheet: ActiveSheet? = nil
 
     // MARK: - Create challenge UI state (new)
+    @State private var pendingSendChallenge: PendingSendChallenge? = nil
     @State private var selectedExerciseType: ChallengeExercise = .pushups
     @State private var selectedRepsPreset: Int? = 25
     @State private var customRepsText: String = "25"
@@ -67,6 +67,12 @@ struct FamilyControlsTestView: View {
                         },
                         recentItems: HomeView.placeholderRecent,
                         hasActiveChallenge: lockService.shouldBlockThisDevice,
+                        onUnblockGate: {
+                            activeSheet = nil
+                            DispatchQueue.main.async {
+                                showUnblockPushupGate = true
+                            }
+                        },
                         onTapHelp: {
                             activeSheet = .settings
                         }
@@ -121,7 +127,11 @@ struct FamilyControlsTestView: View {
 
                         activeSheet = nil
                         DispatchQueue.main.async {
-                            showBlockPushupGate = true
+                            pendingSendChallenge = PendingSendChallenge(
+                                targetUid: targetUid,
+                                reps: reps,
+                                exerciseType: exerciseType
+                            )
                         }
                     }
                 )
@@ -140,7 +150,10 @@ struct FamilyControlsTestView: View {
                         lockService.createUserDb(name: "name placeholder")
                     },
                     onUnblockGate: {
-                        showUnblockPushupGate = true
+                        activeSheet = nil
+                        DispatchQueue.main.async {
+                            showUnblockPushupGate = true
+                        }
                     },
                     hasActiveChallenge: lockService.shouldBlockThisDevice
                 )
@@ -175,43 +188,41 @@ struct FamilyControlsTestView: View {
                 }
             }
         }
-        // Sender gate: do the same exercise/reps as the challenge being sent
-        .fullScreenCover(isPresented: $showBlockPushupGate) {
-            let reps = Int(customRepsText) ?? (selectedRepsPreset ?? 3)
-            let targetUid = challengeTargetUid ?? toUserUid
-            let exercise = selectedExerciseType.rawValue
+        // Sender gate: item-based so the challenge payload is passed in (no stale state on first send)
+        .fullScreenCover(item: $pendingSendChallenge) { challenge in
+            let exercise = challenge.exerciseType.rawValue
             let exerciseLabel = exercise == "jumping jacks" ? "jumping jacks" : "pushups"
-            let title = "Do \(reps) \(exerciseLabel) to send challenge"
+            let title = "Do \(challenge.reps) \(exerciseLabel) to send challenge"
 
             if exercise == "jumping jacks" {
                 JumpingJackGateView(
                     title: title,
-                    requiredReps: reps,
+                    requiredReps: challenge.reps,
                     onComplete: {
                         lockService.createChallenge(
-                            toUser: targetUid,
+                            toUser: challenge.targetUid,
                             exerciseType: exercise,
-                            reps: reps,
+                            reps: challenge.reps,
                             blockDurationSec: 300
                         )
-                        showBlockPushupGate = false
+                        pendingSendChallenge = nil
                     },
-                    onCancel: {}
+                    onCancel: { pendingSendChallenge = nil }
                 )
             } else {
                 PushupGateView(
                     title: title,
-                    requiredReps: reps,
+                    requiredReps: challenge.reps,
                     onComplete: {
                         lockService.createChallenge(
-                            toUser: targetUid,
+                            toUser: challenge.targetUid,
                             exerciseType: exercise,
-                            reps: reps,
+                            reps: challenge.reps,
                             blockDurationSec: 300
                         )
-                        showBlockPushupGate = false
+                        pendingSendChallenge = nil
                     },
-                    onCancel: {}
+                    onCancel: { pendingSendChallenge = nil }
                 )
             }
         }
@@ -386,6 +397,7 @@ private struct HomeView: View {
     let recentItems: [RecentItem]
 
     let hasActiveChallenge: Bool
+    let onUnblockGate: () -> Void
     let onTapHelp: () -> Void
 
     var body: some View {
@@ -486,6 +498,18 @@ private struct HomeView: View {
                 .foregroundStyle(GremlinTheme.textSecondary)
                 .tracking(1.0)
                 .padding(.top, 6)
+
+            if hasActiveChallenge {
+                Button(action: onUnblockGate) {
+                    QuickActionRow(
+                        icon: "lock.open.fill",
+                        iconBackground: Color.red.opacity(0.25),
+                        title: "Unblock My Apps",
+                        subtitle: "complete challenge to unblock"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
 
             Button(action: onTapNewChallenge) {
                 QuickActionRow(
@@ -1019,6 +1043,14 @@ private struct AddFriendView: View {
 
 // MARK: - Create Challenge
 
+/// Payload for the send-challenge gate. Item-based fullScreenCover uses this so the first send gets the correct reps/exercise.
+private struct PendingSendChallenge: Identifiable {
+    let id = UUID()
+    let targetUid: String
+    let reps: Int
+    let exerciseType: ChallengeExercise
+}
+
 private enum ChallengeExercise: String, CaseIterable, Identifiable {
     case pushups = "pushups"
     case jumpingJacks = "jumping jacks"
@@ -1164,13 +1196,26 @@ private struct CreateChallengeView: View {
                                         .tracking(0.8)
                                 }
 
-                                Text("\(resolvedReps) \(selectedExerciseType.rawValue)")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(.white)
+                                HStack(spacing: 14) {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(selectedExerciseType.iconTint.opacity(0.18))
+                                        .frame(width: 44, height: 44)
+                                        .overlay(
+                                            Image(systemName: selectedExerciseType.iconName)
+                                                .font(.system(size: 18, weight: .bold))
+                                                .foregroundStyle(selectedExerciseType.iconTint)
+                                        )
 
-                                Text("their tiktok locks until they finish")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(GremlinTheme.textSecondary)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(resolvedReps) \(selectedExerciseType.rawValue)")
+                                            .font(.system(size: 20, weight: .bold))
+                                            .foregroundStyle(.white)
+                                        Text("their tiktok locks until they finish")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundStyle(GremlinTheme.textSecondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
                             }
                         }
                         .overlay(
