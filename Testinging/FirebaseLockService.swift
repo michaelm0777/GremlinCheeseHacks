@@ -37,7 +37,6 @@ final class FirebaseLockService: ObservableObject {
     // MARK: - Create challenge (manual toUser uid)
 
     func createChallenge(
-        toUserUid: String,
         exerciseType: String,
         reps: Int,
         blockDurationSec: Int
@@ -47,7 +46,7 @@ final class FirebaseLockService: ObservableObject {
 
             let challengeData: [String: Any] = [
                 "fromUser": myUid,
-                "toUser": toUserUid,
+                "toUser": Y4rd9Hm6w6hU7ndmpYyAUtxYycx2,
                 "status": "pending",
                 "createdAt": FieldValue.serverTimestamp(),
                 "blockDuration": blockDurationSec,
@@ -66,7 +65,7 @@ final class FirebaseLockService: ObservableObject {
                 if let error = error {
                     print("Create challenge error:", error)
                 } else {
-                    print("Challenge created for:", toUserUid)
+                    print("Challenge created for:", Y4rd9Hm6w6hU7ndmpYyAUtxYycx2)
                 }
             }
         }
